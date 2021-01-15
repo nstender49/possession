@@ -1,4 +1,4 @@
-# 3-5-7
-3-5-7 is a poker game. 
+# Possession
+Possession is a social deception game I made up!
 
 Built with Node.js and Socket.io.
