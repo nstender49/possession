@@ -11,7 +11,7 @@ class PreLoadedImage {
 }
 
 class Label {
-	constructor(position, text, size, align, font, color) {
+	constructor(position, text, size, align, font, fill) {
 		this.position = position;
 		this.text = text;
 		this.data = "";
@@ -20,7 +20,8 @@ class Label {
 		this.align = align ? align : "center";
 		this.visible = true;
 		this.opacity = 1;
-		this.color = color;
+		this.fill = fill ? fill : "white";
+		this.maxSize = size;
 	}
 
 	msg() {
@@ -47,9 +48,7 @@ class Label {
 			ctx.globalAlpha = this.opacity;
 		}
 
-		var color = this.color ? this.color : WHITE;
-		ctx.strokeStyle = color;
-		ctx.fillStyle = color;
+		ctx.fillStyle = this.fill;
 		ctx.font = (this.size * r) + "px " + this.font;
 	
 		ctx.textBaseline = "center";
@@ -85,10 +84,11 @@ class Button {
 		this.holdable = holdable;
 		this.holdTicks = 0;
 		this.sticky = sticky;
+		this.isOverlay = false;
 	}
 
 	checkHold() {
-		if (!this.holdable || !this.enabled || !this.down) {
+		if (!this.holdable || !this.isEnabled() || !this.down) {
 			return;
 		}
 		if (isOnButton(this)) {
@@ -100,8 +100,12 @@ class Button {
 		}
 	}
 
+	isEnabled() {
+		return this.enabled && (!overlayed || this.isOverlay);
+	}
+
 	toggle() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		if (this.clicked) {
@@ -112,7 +116,7 @@ class Button {
 	}
 
 	click() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		if (!this.clicked) {
@@ -124,7 +128,7 @@ class Button {
 	}
 
 	unclick() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		if (this.clicked && this.uncallback && this.undoEnabled) {
@@ -195,7 +199,7 @@ class Button {
 		if (this.focus || this.clicked) {
 			ctx.strokeStyle = RED;
 			ctx.fillStyle = RED;
-		} else if (this.enabled) {
+		} else if (this.isEnabled()) {
 			ctx.strokeStyle = WHITE;
 			ctx.fillStyle = WHITE;
 		} else {
@@ -306,6 +310,7 @@ class ImageButton {
 		this.enabled = true;
 		this.visible = true;
 		this.on = false;
+		this.isOverlay = false;
 		// On image
 		this.on_img = on_img;
 		if (uncallback) {
@@ -317,8 +322,12 @@ class ImageButton {
 
 	checkHold() {}
 
+	isEnabled() {
+		return this.enabled && (!overlayed || this.isOverlay);
+	}
+
 	toggle() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		if (this.uncallback && this.on) {
@@ -331,7 +340,7 @@ class ImageButton {
 	}
 
 	click() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		if (!this.clicked) {
@@ -343,7 +352,7 @@ class ImageButton {
 	}
 
 	unclick() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		if (this.clicked && this.uncallback && this.undoEnabled) {
@@ -412,7 +421,6 @@ class ImageButton {
 	}
 
 	draw() {
-		// console.log(`TRYING TO DRAW ${this.img.img.src} : ${this.visible}`);
 		if (!this.visible) { return; }
 
 		var pos = this.pos();
@@ -425,6 +433,126 @@ class ImageButton {
 	}
 }
 
+class ShapeButton {
+	constructor(position, width, height, center, absolute, color, callback) {
+		this.position = position;
+		this.width = width;
+		this.height = height;
+		this.center = center
+		this.absolute = absolute;
+		this.callback = callback;
+		this.clicked = false;
+		this.sticky = false;
+		this.enabled = true;
+		this.visible = true;
+		this.on = false;
+		this.isOverlay = false;
+		this.color = color;
+	}
+
+	checkHold() {}
+
+	isEnabled() {
+		return this.enabled && (!overlayed || this.isOverlay);
+	}
+
+	toggle() {
+		if (!this.isEnabled()) {
+			return;
+		}
+		if (this.uncallback && this.on) {
+			this.uncallback();
+		} else {
+			this.callback();
+		}
+		this.on = !this.on;
+		this.img = this.uncallback && !this.on ? this.off_img : this.on_img;
+	}
+
+	click() {
+		if (!this.isEnabled()) {
+			return;
+		}
+		if (!this.clicked) {
+			if (this.uncallback || this.sticky) {
+				this.clicked = true;
+			}
+			this.callback();
+		}
+	}
+
+	unclick() {
+		if (!this.isEnabled()) {
+			return;
+		}
+		if (this.clicked && this.uncallback && this.undoEnabled) {
+			this.clicked = false;
+			this.uncallback();
+		}
+	}
+
+	enable() {
+		this.visible = true;
+		this.enabled = true;
+	}
+
+	disable() {
+		this.visible = false;
+		this.enabled = false;
+	}
+
+	show() {
+		this.visible = true;
+	}
+	
+	pos() {
+		var pos = {x: this.position.x, y: this.position.y};
+		if (!this.absolute) {
+			pos.x *= canvas.width;
+			pos.y *= canvas.height;
+		}
+		if (this.center) {
+			var dims = this.dims();
+			pos.x -= dims.width / 2;
+			pos.y -= dims.height / 2;
+		}
+		return pos;
+	}
+
+	dims() {
+		return {width: this.width * canvas.width, height: this.height * canvas.height};
+	}
+
+	buttonDims() {
+		var pos = this.pos();
+		var dims = this.dims();
+	
+		var minX = pos.x;
+		var minY = pos.y;
+		var maxX = minX + dims.width;
+		var maxY = minY + dims.height;
+	
+		return {
+			left: minX,
+			right: maxX,
+			top: minY,
+			bot: maxY,
+			width: dims.width,
+			height: dims.height,
+		}
+	}
+
+	draw() {
+		if (!this.visible) { return; }
+
+		var pos = this.pos();
+		var dims = this.dims();
+
+		ctx.fillStyle = this.color;
+		ctx.fillRect(pos.x, pos.y, dims.width, dims.height);
+	}
+}
+
 class Checkbox {
 	constructor(position, size, callback) {
 		this.position = position;
@@ -434,12 +562,17 @@ class Checkbox {
 		this.enabled = false;
 		this.visible = true;
 		this.clicked = false;
+		this.isOverlay = false;
 	}
 
 	checkHold() {}
 
+	isEnabled() {
+		return this.enabled && (!overlayed || this.isOverlay);
+	}
+
 	toggle() {
-		if (!this.enabled) {
+		if (!this.isEnabled()) {
 			return;
 		}
 		this.clicked = !this.clicked;
@@ -485,7 +618,7 @@ class Checkbox {
 	draw() {
 		if (!this.visible) { return; }
 
-		if (this.enabled) {
+		if (this.isEnabled()) {
 			ctx.strokeStyle = "black";
 			ctx.fillStyle = "black";
 		} else {

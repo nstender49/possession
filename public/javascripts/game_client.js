@@ -12,6 +12,13 @@ const TABLE_VOTING = "table voting";
 const TABLE_SELECT = "table selecting player";
 const TABLE_INTERFERE = "table demon interference"
 const TABLE_DISPLAY = "table display result";
+const TABLE_END = "table game over";
+
+const PLAYER_COLORS = [
+	"#4c270c", "#fbb7c5", "#8dd304", "#0089cc", "#98178e", "#ed6e01",  
+	"#a37e30", "#ed2c34", "#144c2a", "#0046b6", "#512246", "#fdc918", 
+ 	"#000000", "#ffffff"
+];
 
 // Moves players can make
 const BEGIN = "BEGIN";
@@ -24,6 +31,7 @@ const ROD = "ROD";
 const EXORCISM = "EXORCISM";
 const SELECT = "SELECT";
 const INTERFERE = "INTERFERE";
+const FINISH = "FINISH";
 
 // Move images
 const ITEM_IMAGES = [];
@@ -42,10 +50,11 @@ const VOTED_IMAGE = new PreLoadedImage("/images/voted.png");
 const YES_VOTE_IMAGE = new PreLoadedImage("/images/vote_yes.png");
 const NO_VOTE_IMAGE = new PreLoadedImage("/images/vote_no.png");
 const PENTAGRAM_IMAGE = new PreLoadedImage("/images/pentagram.png");
+const NAMEPLATE_IMAGE = new PreLoadedImage("/images/nameplate.png");
 
 // Player images
 const PLAYER_IMAGES = [];
-for (var i = 0; i < 12; i++) {
+for (var i = 0; i < 18; i++) {
 	PLAYER_IMAGES[i] = new PreLoadedImage(`/images/avatars/${i}.png`);
 }
 
@@ -74,7 +83,7 @@ var gameState, theTable, thePlayer, thePlayerIsPossessed;
 // Demon state
 var possessedPlayers, interfereUses;
 // Interface variables 
-var selectedPlayer, popupMessage;
+var selectedPlayer, popupMessage, overlayed, selectingAvatar;
 
 //////////  Socket Events  \\\\\\\\\\
 
@@ -88,11 +97,6 @@ socket.on("update table", function(table) {
 socket.on("update hand", function(name, hand, clear) {
 	if (clear) { hands = []; }
 	hands[name] = hand;
-});
-
-// Triggers countdown sound, to keep it sync with the server.
-socket.on("play countdown", function() {
-	sounds["count"].play();
 });
 
 // Emit an error to the player from the server.
@@ -187,10 +191,14 @@ function initLabels() {
 
 	// Table
 	labels["table_img"] = new ImageLabel({x: 0.3, y: 0.5}, 0.4, false, TABLE_IMAGE, true, false);
-	labels["message"] = new Label({x: 0.3, y: 0.5}, "", 30);
+	labels["message"] = new Label({x: 0.3, y: 0.5}, "", 20);
 	buttons["leave table"] = new Button({x: 0.3, y: 0.6}, "Leave", 30, leaveTable);
 	buttons["begin game"] = new Button({x: 0.3, y: 0.4}, "Begin", 30, doMove.bind(null, BEGIN));
-	
+	buttons["change avatar"] = new Button({x: 0.3, y: 0.7}, "Change Avatar", 20, openAvatarSelection);
+	buttons["clear avatar"] = new Button({x: 0.4, y: 0.58}, "Done", 20, clearAvatarSelection);
+	buttons["clear avatar"].isOverlay = true;
+	buttons["finish game"] = new Button({x: 0.3, y: 0.4}, "Finish", 30, doMove.bind(null, FINISH));
+
 	// Items
 	buttons[WATER] = new ImageButton({x: 0.24, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[WATER], doMove.bind(null, WATER), false, false, "black");
 	labels["water_count"] = new Label({x: 0.18, y: 0.37}, "", 20);
@@ -228,6 +236,7 @@ function initLabels() {
 	// Chat
 	buttons["submit chat"] = new Button({x: 0.934, y: 0.681}, "↵", 15, submitChat);
 	buttons["clear popup"] = new Button({x: 0.3, y: 0.53}, "OK", 20, clearPopUp);
+	buttons["clear popup"].isOverlay = true;
 	
 	// Demon / interfere
 	labels["interfere uses"] = new Label({x: 0.53, y: 0.95}, "Interfere uses: 0", 15, true);
@@ -241,17 +250,30 @@ function initLabels() {
 	// Game settings (bottom bar)
 	labels["table"] = new Label({x: 0.01, y: 0.99}, "", 15, "left");
 	labels["error msg"] = new Label({x: 0.5, y: 0.98}, "", 20);
-	buttons["sound"] = new ImageButton({x: 0.91, y: 0.97}, 0.02, false, false, false, SOUND_ON_IMG, toggleSound.bind(null, true), SOUND_OFF_IMG, toggleSound.bind(null, false));
+	// buttons["sound"] = new ImageButton({x: 0.91, y: 0.97}, 0.02, false, false, false, SOUND_ON_IMG, toggleSound.bind(null, true), SOUND_OFF_IMG, toggleSound.bind(null, false));
 	labels["version"] = new Label({x: 0.99, y: 0.99}, "", 15, "right", "monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
 		labels["table"],
 		labels["error msg"],
-		buttons["sound"],
+		// buttons["sound"],
 		labels["version"],
 	]);
 
+	// Avatar selection
+	drawGroups["avatar selection"] = new DrawGroup([]);
+	for (var i = 0; i < 18; i++) {
+		buttons[`avatar ${i}`] = new ImageButton({x: 0, y: 0}, 0, false, false, true, PLAYER_IMAGES[i], changeAvatar.bind(null, i));
+		buttons[`avatar ${i}`].isOverlay = true;
+		drawGroups["avatar selection"].draws.push(buttons[`avatar ${i}`]);
+	}
+	for (var color of PLAYER_COLORS) {
+		buttons[`color ${color}`] = new ShapeButton({x: 0, y: 0}, 0, 0, false, true, color, changeColor.bind(null, color));
+		buttons[`color ${color}`].isOverlay = true;
+		drawGroups["avatar selection"].draws.push(buttons[`color ${color}`]);
+	}
+
 	// Sounds
-	sounds["count"] = new sound("/sounds/racestart.wav");
+	// sounds["count"] = new sound("/sounds/racestart.wav");
 }
 
 function updateSettings() {
@@ -267,7 +289,7 @@ function changeState(state) {
 		button.disable();
 	}
 
-	buttons["sound"].enable();
+	// buttons["sound"].enable();
 
 	if (state === MAIN_MENU) {
 		showInputs(["player-name", "game-code"]);
@@ -277,7 +299,15 @@ function changeState(state) {
 	}
 
 	switch(state) {
+		case INIT:
+			overlayed = false;
+			selectingAvatar = false;
+			popupMessage = false;
+			break;
 		case MAIN_MENU:
+			overlayed = false;
+			selectingAvatar = false;
+			popupMessage = false;
 			buttons["make table"].enable();
 			buttons["join table"].enable();
 			showInputs(["player-name", "game-code"]);
@@ -286,8 +316,10 @@ function changeState(state) {
 			thePlayerIsPossessed = false;
 			possessedPlayers = [];
 			buttons["leave table"].enable();
+			buttons["change avatar"].enable();
 			break;
 		case TABLE_NIGHT:
+			selectingAvatar = false;
 			break;
 		case TABLE_DAY:
 			if (thePlayer.isDemon) {
@@ -389,9 +421,29 @@ function getSelectedPlayer() {
 
 function clearPopUp() {
 	popupMessage = undefined;
+	overlayed = false;
 }
 
 ///// Client-server functions \\\\\
+
+function changeAvatar(avatarId) {
+	socket.emit("change avatar", avatarId);
+}
+
+function changeColor(color) {
+	socket.emit("change color", color);
+}
+
+function openAvatarSelection() {
+	selectingAvatar = true;
+}
+
+function clearAvatarSelection() {
+	selectingAvatar = false;
+	overlayed = false;
+	buttons["clear avatar"].disable();
+	drawGroups["avatar selection"].disable();
+}
 
 function submitChat() {
 	var input = document.getElementById("chat-input");
