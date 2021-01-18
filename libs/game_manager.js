@@ -41,10 +41,11 @@ const ITEM_USE_MSG = {
 };
 
 const PLAYER_COLORS = [
-	"#4c270c", "#fbb7c5", "#8dd304", "#0089cc", "#98178e", "#ed6e01",  
+	"#fbb7c5", "#8dd304", "#0089cc", "#98178e", "#ed6e01",  
 	"#a37e30", "#ed2c34", "#144c2a", "#0046b6", "#512246", "#fdc918", 
- 	"#000000", "#ffffff"
+	"#4c270c", "#000000", "#ffffff"
 ];
+const AVATAR_COUNT = 50;
 
 // Game states
 const INIT = "init";
@@ -121,6 +122,7 @@ module.exports.listen = function(app) {
 		});
 
 		socket.on("change avatar", function(avatarId) {
+			if (avatarId < 0 || avatarId >= AVATAR_COUNT) return;
 			var table = getTableBySocketId(socket.id);
 			var player = getPlayerBySocketId(socket.id);
 			var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
@@ -129,6 +131,7 @@ module.exports.listen = function(app) {
 		});
 
 		socket.on("change color", function(color) {
+			if (!PLAYER_COLORS.includes(color)) return;
 			var table = getTableBySocketId(socket.id);
 			if (table.playerColors.includes(color)) return;
 			var player = getPlayerBySocketId(socket.id);

@@ -81,7 +81,9 @@ function handleKeyDown(event) {
 			}
 			break;
 		case 13:	// enter
-			if (theTable) {
+			if (overlay) {
+				clearOverlay();
+			} else if (theTable) {
 				buttons["submit chat"].click();
 			} else {
 				if (SHIFTED) {
@@ -188,19 +190,10 @@ function draw() {
 	drawRect(BACKGROUND_COLOR, 0, 0, 1, 1);
 
 	// Check for holding buttons.
-	for (var button of getButtons()) {
-		button.checkHold();
-	}
+	for (var button of getButtons()) button.checkHold();
 
-	if (gameState !== MAIN_MENU) {
-		buttons["submit chat"].draw();
-	}
-	if (![MAIN_MENU, TABLE_LOBBY].includes(gameState) && thePlayer && thePlayer.isDemon) {
-		labels["interfere uses"].draw();
-		if (selectedPlayer) {
-			drawCircle(getSelectedPlayer().color, 0.585 * canvas.width, 0.675 * canvas.height, 0.01 * canvas.width);
-		}
-	}
+	buttons["howto"].draw();
+	if (gameState !== MAIN_MENU) buttons["submit chat"].draw();
 
 	switch (gameState) {
 		case INIT:
@@ -230,10 +223,6 @@ function draw() {
 				drawGroups["items"].disable();
 				drawGroups["items"].show();
 			}
-			labels["water_count"].text = `${theTable.resources.WATER} x`;
-			labels["board_count"].text = `${theTable.resources.BOARD} x`;
-			labels["rod_count"].text = `${theTable.resources.ROD} x`;
-			labels["exorcism_count"].text = `${theTable.resources.EXORCISM} x`;
 			drawGroups["items"].draw();
 			break;
 		case TABLE_SECONDING:
@@ -252,24 +241,12 @@ function draw() {
 			break;
 		case TABLE_DISPLAY:
 			drawTable();
-			switch(theTable.currentMove.type) {
-				case WATER:
-				case ROD:
-				case EXORCISM:
-				case BOARD:
-					labels[theTable.currentMove.type].draw();
-					break;
-			}
+			if (theTable.currentMove.type !== PASS) labels[theTable.currentMove.type].draw();
 			break;
 		case TABLE_INTERFERE:
 			drawTable();
 			labels[BOARD].draw();
-			if (thePlayer.isDemon) {
-				if (interfereUses === 0) {
-					drawGroups["interfere"].disable();
-				}
-				drawGroups["interfere"].draw();
-			}
+			if (thePlayer.isDemon) drawGroups["interfere"].draw();
 			break;
 		case TABLE_END:
 			drawTable();
@@ -280,54 +257,165 @@ function draw() {
 			break;
 	}
 
-	if (popupMessage) {
-		drawPopUp();
+	// Demon specific
+	if (![MAIN_MENU, TABLE_LOBBY].includes(gameState) && thePlayer && thePlayer.isDemon) {
+		labels["interfere uses"].draw();
+		if (selectedPlayer) {
+			drawCircle(getSelectedPlayer().color, 0.585 * canvas.width, 0.675 * canvas.height, 0.01 * canvas.width);
+		}
 	}
-	if (selectingAvatar) {
-		drawAvatarSelection();
+
+	// Overlays
+	switch (overlay) {
+		case OVERLAY_POPUP:
+			drawPopUp();
+			break;
+		case OVERLAY_HOWTO:
+			drawHowTo();
+			break;
+		case OVERLAY_AVATAR:
+			drawAvatarSelection();
+			break;
 	}
+
 	drawGroups["bottom bar"].draw();
+}
+
+////// Overlays \\\\\\\\
+
+function drawHowTo() {
+	overlayed = true;
+
+	var x = 0.01 * canvas.width;
+	var y = 0.03 * canvas.height;
+	var w = 0.98 * canvas.width;
+	var h = 0.92 * canvas.height;
+	drawRect("#333333", x, y, w, h, true);
+
+
+	switch(howtoPage) {
+		case 0:
+			drawText("POSSESSION", 0.5, 0.1, 30);
+			var intro = [
+				"Possession is a game of social deduction pitting a one player (the demon) against the rest of the players (the humans).",
+				"    Each round consists of two phases: first a night phase and then a day phase.",
+				"    Each night, the demon possesses one human who is not already possessed, recruiting them to the demon's team.",
+				"    Each day, the human players try to identify and liberate the possessed players using various tools (see next page).",
+				"    Meanwhile the demon communicates with each possessed player by sending individual, one-way messages.",
+				"",
+				"",
+				"The goal of the demon is to possess half of the humans, the goal of the humans is to liberate all of the humans.",
+				"    If half of the human players are possessed at the *end* of a round, the demon and the possessed players win.",
+				"    If all of the humans are liberated, the demon *and* the humans that were freed in the last round (the damned) lose.", 
+				"    Human players who are possessed may choose to cooperate with the demon or not, but be careful not to be freed in the last round!",
+				"",
+				"",
+				"During the day phase each human player may propose to use one tool that is still available in the round.",
+				"    Once proposed, another player must second the proposal. If seconded, all human players will vote on whether to allow the use.",
+				"    If half the humans or more vote yes (a tie succeeds), the proposing player then selects a target to use the tool on.",
+				"    The player may declare their intended target during proposal and voting, but they may select whoever they want, except themself."
+			];
+			drawRect("#575757", 0.03, 0.13, 0.94, 0.24);
+			drawRect("#575757", 0.03, 0.64, 0.94, 0.24);
+			for (var i = 0; i < intro.length; i++) {
+				drawText(intro[i], 0.05, 0.17 + i * 0.04, 15, "left");
+			}
+			break;
+		case 1:
+			drawText("Tools of the Trade", 0.5, 0.1, 30);
+
+			var imageX = 0.075;
+			var imageY = 0.25;
+			var imageInc = 0.17;
+			var imageSize = 0.05;
+			var textX = 0.125;
+			var textY = 0.2;
+			var textInc = 0.03;
+			var textSize = 15;
+
+			var imageDesc = {
+				BOARD: [
+					"Spirit Board: a player uses the spirit board to ask if another player is currently possessed.",
+					"    Players may consult the spirit board once per round. The answer is displayed to all players.",
+					"    The demon may interfere with the spirit board a limited number of times, making it give the wrong answer.",
+					"    The demon starts with one chance to interfere, and gains one use every time an exorcism is performed.",
+				],
+				ROD: [
+					"Divining Rod: a player uses the diving rod to determine if another player is currently possessed.",
+					"    Players may use the divining rod once per round. Only the user of the rod is told the answer.",
+				],
+				WATER: [
+					"Holy Water: a player uses one vial of holy water to free another player from possession.",
+					"    Players gain one vial of holy water per round, unused vials accumulate across rounds.",
+				],
+				EXORCISM: [
+					"Cross: a player uses the cross to perform an exorcism on another player, freeing them from possession.",
+					"    Players may perform one exorcism per round. The target player is knocked unconscious of the next round,",
+					"    unable to speak or vote (they are not counted in vote ratio).  Performing an exorcism gives the demon a ",
+					"    window into the world, granting them one additional chance to interfere with the Spirit Board.",
+				],
+			};
+			var items = [BOARD, ROD, WATER, EXORCISM];
+
+			for (var item of items) {
+				if (Math.round(imageY * 100) % 2 == 1)
+					drawRect("#575757", imageX - imageSize, imageY - imageSize * 1.6, 0.95, imageSize * 3.2);
+				var l = new ImageLabel({x: imageX, y: imageY}, imageSize, false, ITEM_IMAGES[item], true);
+				l.draw();
+				textY = imageY - 0.04;
+				imageY += imageInc;
+				for (var desc of imageDesc[item]) {
+					drawText(desc, textX, textY, textSize, "left");
+					textY += textInc;
+				}
+			}
+			break;
+	}
+	drawGroups["howto"].enable();
+	if (howtoPage === 0) {
+		buttons["howto <"].disable();
+	} else if (howtoPage === HOW_TO_PAGES - 1) {
+		buttons["howto >"].disable();
+	}
+	drawGroups["howto"].draw();
 }
 
 function drawAvatarSelection() {
 	overlayed = true;
 
-	var x = 0.03 * canvas.width;
-	var y = 0.05 * canvas.height;
-	var w = 0.56 * canvas.width;
-	var h = 0.9 * canvas.height;
+	var x = 0.01 * canvas.width;
+	var y = 0.03 * canvas.height;
+	var w = 0.98 * canvas.width;
+	var h = 0.92 * canvas.height;
 	drawRect("#333333", x, y, w, h, true);
 
-	var gapWidth = 0.02 * canvas.width;
-	var boxWidth = 0.07 * canvas.width;
+	var gapWidth = 0.0067 * canvas.width;
+	var boxWidth = 0.09 * canvas.width;
 	var boxHeight = boxWidth / PLAYER_IMAGES[0].ratio;
 
 	drawGroups["avatar selection"].enable();
 
 	// Draw avatars
-	for (var i = 0; i < 18; i++) {
-		var row = i % 6;
-		var col = Math.floor(i / 6);
+	const perRow = 10;
+	for (var i = 0; i < AVATAR_COUNT; i++) {
+		var row = i % perRow;
+		var col = Math.floor(i / perRow);
 		if (i === thePlayer.avatarId) {
-			drawRect("white", x + gapWidth * (row + 1) + boxWidth * row - 2, y + gapWidth * (col + 1) + boxHeight * col - 2, boxWidth + 4, boxHeight + 4, true);
+			drawCircle(thePlayer.color, x + gapWidth * (row + 1) + boxWidth * (row + 0.5), y + gapWidth * (col + 1) + boxHeight * (col + 0.5), boxWidth / 2, true);
 		}
 		buttons[`avatar ${i}`].position = {x: x + gapWidth * (row + 1) + boxWidth * row, y: y + gapWidth * (col + 1) + boxHeight * col};
 		buttons[`avatar ${i}`].width = boxWidth / canvas.width;
 		buttons[`avatar ${i}`].draw();
 	}
 
-	for (var i = 0; i < 12; i ++) {
-		var row = i % 6;
-		var col = Math.floor(i / 6);
+	var gapWidth = 0.005 * canvas.width;
+	var boxWidth = 0.06 * canvas.width;
+	for (var i = 0; i < 14; i ++) {
 		var color = PLAYER_COLORS[i];
-		var boxX = x + gapWidth * (row + 1) + boxWidth * row;
-		var boxY = y + 0.58 * canvas.height + gapWidth * (col + 1) + boxHeight * col;
-		drawColorSelector(color, boxX, boxY, boxWidth, boxHeight);
+		var boxX = x + gapWidth * (i + 1) + boxWidth * i;
+		var boxY = y + 0.8 * canvas.height;
+		drawColorSelector(color, boxX, boxY, boxWidth, boxWidth);
 	}
-	drawColorSelector(PLAYER_COLORS[12], x + gapWidth, y + 0.47 * canvas.height, boxWidth, boxHeight);
-	drawColorSelector(PLAYER_COLORS[13], x + gapWidth * 6 + boxWidth * 5, y + 0.47 * canvas.height, boxWidth, boxHeight);
-
-	drawPlayerPad(thePlayer, 0.3 * canvas.width, 0.57 * canvas.height, 0.04 * canvas.width);
 
 	buttons["clear avatar"].enable();
 	buttons["clear avatar"].draw();
@@ -335,7 +423,7 @@ function drawAvatarSelection() {
 
 function drawColorSelector(color, x, y, w, h) {
 	if (color === thePlayer.color) {
-		drawRect("white", x - 2, y - 2, w + 4, h + 4, true);
+		drawRect("gray", x - 2, y - 2, w + 4, h + 4, true);
 	}
 	buttons[`color ${color}`].position = {x: x, y: y};
 	buttons[`color ${color}`].width = w / canvas.width;
@@ -363,6 +451,8 @@ function drawPopUp() {
 	buttons["clear popup"].draw();
 }
 
+////// Main game \\\\\\\\
+
 function drawTable() {
 	// Check table still exists, in case we have left the table.
 	if (!theTable) {
@@ -376,24 +466,6 @@ function drawTable() {
 
 	// Draw players
 	drawPlayers();
-}
-
-function drawRect(color, x, y, w, h, absolute=false) {
-	var x = x * (absolute ? 1 : canvas.width);
-	var y = y * (absolute ? 1 : canvas.height);
-	var w = w * (absolute ? 1 : canvas.width);
-	var h = h * (absolute ? 1 : canvas.height);
-	ctx.fillStyle = color;
-	ctx.fillRect(x, y, w, h);
-}
-
-function drawCircle(color, x, y, r) {
-	ctx.fillStyle = color;
-	ctx.lineWidth = 0.1;
-	ctx.beginPath();
-	ctx.arc(x, y, r, 0, 2 * Math.PI, false);
-	ctx.fill();
-	ctx.stroke();
 }
 
 function drawPlayers() {
@@ -430,8 +502,8 @@ function drawPlayerPad(player, x, y, r) {
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
 	if (player.isExorcised) {
-		var move = new ImageLabel({x: x - r * 0.25, y: y - r * 0.25}, false, r * 1.2 / canvas.height, ITEM_IMAGES[EXORCISM], true, true);
-		move.draw();
+		var cross = new ImageLabel({x: x - r * 0.25, y: y - r * 0.25}, false, r * 1.2 / canvas.height, ITEM_IMAGES[EXORCISM], true, true);
+		cross.draw();
 	}
 	// Draw name
 	var plate = new ImageLabel({x: x, y: y + r * 0.7}, r * 2 / canvas.width, false, NAMEPLATE_IMAGE, true, true);
@@ -454,6 +526,36 @@ function drawPlayerPad(player, x, y, r) {
 		var voted = new ImageLabel({x: x + r * 0.5, y: y + r * 0.2}, false, r * 0.7 / canvas.height, image, true, true);
 		voted.draw();
 	}
+}
+
+///// Drawing utilities \\\\\\\
+
+function drawText(text, x, y, size, align) {
+	var l = new Label({x: x, y: y}, text, size, align);
+	l.draw();
+}
+
+function drawImage(image, x, y, w, h, center, absolute) {
+	var l = new ImageLabel({x: x, y: y}, w, h, image, center, absolute);
+	l.draw();
+}
+
+function drawRect(color, x, y, w, h, absolute=false) {
+	var x = x * (absolute ? 1 : canvas.width);
+	var y = y * (absolute ? 1 : canvas.height);
+	var w = w * (absolute ? 1 : canvas.width);
+	var h = h * (absolute ? 1 : canvas.height);
+	ctx.fillStyle = color;
+	ctx.fillRect(x, y, w, h);
+}
+
+function drawCircle(color, x, y, r) {
+	ctx.fillStyle = color;
+	ctx.lineWidth = 0.1;
+	ctx.beginPath();
+	ctx.arc(x, y, r, 0, 2 * Math.PI, false);
+	ctx.fill();
+	ctx.stroke();
 }
 
 function scaleLabelsToWidth(labels, width, margin) {
@@ -578,7 +680,7 @@ var ELEM_CONFIGS = [
 		name: "chat-input",
 		x: 0.6,
 		y: 0.65,
-		w: 0.315,
+		w: 0.32,
 		h: 0.05,
 		size: 15,
 	},

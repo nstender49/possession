@@ -15,9 +15,9 @@ const TABLE_DISPLAY = "table display result";
 const TABLE_END = "table game over";
 
 const PLAYER_COLORS = [
-	"#4c270c", "#fbb7c5", "#8dd304", "#0089cc", "#98178e", "#ed6e01",  
+	"#fbb7c5", "#8dd304", "#0089cc", "#98178e", "#ed6e01",  
 	"#a37e30", "#ed2c34", "#144c2a", "#0046b6", "#512246", "#fdc918", 
- 	"#000000", "#ffffff"
+	"#4c270c", "#000000", "#ffffff"
 ];
 
 // Moves players can make
@@ -53,8 +53,9 @@ const PENTAGRAM_IMAGE = new PreLoadedImage("/images/pentagram.png");
 const NAMEPLATE_IMAGE = new PreLoadedImage("/images/nameplate.png");
 
 // Player images
+const AVATAR_COUNT = 50;
 const PLAYER_IMAGES = [];
-for (var i = 0; i < 18; i++) {
+for (var i = 0; i < AVATAR_COUNT; i++) {
 	PLAYER_IMAGES[i] = new PreLoadedImage(`/images/avatars/${i}.png`);
 }
 
@@ -81,9 +82,13 @@ var sounds = [];
 // Game state
 var gameState, theTable, thePlayer, thePlayerIsPossessed;
 // Demon state
-var possessedPlayers, interfereUses;
-// Interface variables 
-var selectedPlayer, popupMessage, overlayed, selectingAvatar;
+var possessedPlayers, interfereUses, selectedPlayer, chatIsDemon;
+// Overlay 
+var overlay, popupMessage, howtoPage;
+const HOW_TO_PAGES = 2;
+const OVERLAY_POPUP = "pop up";
+const OVERLAY_AVATAR = "avatar";
+const OVERLAY_HOWTO = "how to";
 
 //////////  Socket Events  \\\\\\\\\\
 
@@ -112,16 +117,13 @@ socket.on("clear chat", function(chat) {
 	clearChat(chat);
 });
 
-function clearChat(chat) {
-	document.getElementById(chat).innerHTML = "";
-}
-
 socket.on("demon msg", function(msg, player) {
 	addMessage("demon-chat", msg, player);
 });
 
 socket.on("pop up", function(msg) {
 	popupMessage = msg;
+	enableOverlay(OVERLAY_POPUP);
 });
 
 socket.on("possession", function(isPossessed) {
@@ -139,25 +141,6 @@ socket.on("update interfere", function(uses) {
 	interfereUses = uses;
 	labels["interfere uses"].text = `Interfere uses: ${uses}`;
 });
-
-
-function addMessage(chat, msg, player) {
-	var messages = document.getElementById(chat);
-	var item = document.createElement("li");
-	var content = msg;
-	if (player === thePlayer.name) {
-		item.style.textAlign = "right";
-	} else if (chat === "player-chat" && player) {
-		content = `${player} : ${msg}`;
-	} else if (chat === "demon-chat" && thePlayer.isDemon && player) {
-		content = `${player} => ${msg}`
-	} else if (!player) {
-		content = `<< ${msg} >>`;
-	}
-	item.textContent = content;
-	messages.appendChild(item);
-	item.scrollIntoView();
-}
 
 // Server calls on connection to provide settings from server.
 socket.on("init settings", function(settings) {
@@ -194,9 +177,7 @@ function initLabels() {
 	labels["message"] = new Label({x: 0.3, y: 0.5}, "", 20);
 	buttons["leave table"] = new Button({x: 0.3, y: 0.6}, "Leave", 30, leaveTable);
 	buttons["begin game"] = new Button({x: 0.3, y: 0.4}, "Begin", 30, doMove.bind(null, BEGIN));
-	buttons["change avatar"] = new Button({x: 0.3, y: 0.7}, "Change Avatar", 20, openAvatarSelection);
-	buttons["clear avatar"] = new Button({x: 0.4, y: 0.58}, "Done", 20, clearAvatarSelection);
-	buttons["clear avatar"].isOverlay = true;
+	buttons["change avatar"] = new Button({x: 0.3, y: 0.7}, "Change Avatar", 20, enableOverlay.bind(null, OVERLAY_AVATAR));
 	buttons["finish game"] = new Button({x: 0.3, y: 0.4}, "Finish", 30, doMove.bind(null, FINISH));
 
 	// Items
@@ -234,9 +215,7 @@ function initLabels() {
 	]);
 
 	// Chat
-	buttons["submit chat"] = new Button({x: 0.934, y: 0.681}, "↵", 15, submitChat);
-	buttons["clear popup"] = new Button({x: 0.3, y: 0.53}, "OK", 20, clearPopUp);
-	buttons["clear popup"].isOverlay = true;
+	buttons["submit chat"] = new Button({x: 0.935, y: 0.69}, "↵", 15, submitChat);
 	
 	// Demon / interfere
 	labels["interfere uses"] = new Label({x: 0.53, y: 0.95}, "Interfere uses: 0", 15, true);
@@ -259,9 +238,29 @@ function initLabels() {
 		labels["version"],
 	]);
 
+	// Pop up
+	buttons["clear popup"] = new Button({x: 0.3, y: 0.53}, "OK", 20, clearOverlay);
+	buttons["clear popup"].isOverlay = true;
+
+	// How to play
+	buttons["howto"] = new Button({x: 0.02, y: 0.93}, "How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO), false, false, false, "left");
+	buttons["clear howto"] = new Button({x: 0.5, y: 0.91}, "Ok", 20, clearOverlay);
+	buttons["clear howto"].isOverlay = true;
+	buttons["howto >"] = new Button({x: 0.9, y: 0.91}, ">", 20, pageHowTo.bind(null, 1));
+	buttons["howto >"].isOverlay = true;
+	buttons["howto <"] = new Button({x: 0.1, y: 0.91}, "<", 20, pageHowTo.bind(null, -1));
+	buttons["howto <"].isOverlay = true;
+	drawGroups["howto"] = new DrawGroup([
+		buttons["clear howto"],
+		buttons["howto >"],
+		buttons["howto <"]
+	]);
+
 	// Avatar selection
+	buttons["clear avatar"] = new Button({x: 0.955, y: 0.9}, "✓", 40, clearOverlay);
+	buttons["clear avatar"].isOverlay = true;
 	drawGroups["avatar selection"] = new DrawGroup([]);
-	for (var i = 0; i < 18; i++) {
+	for (var i = 0; i < AVATAR_COUNT; i++) {
 		buttons[`avatar ${i}`] = new ImageButton({x: 0, y: 0}, 0, false, false, true, PLAYER_IMAGES[i], changeAvatar.bind(null, i));
 		buttons[`avatar ${i}`].isOverlay = true;
 		drawGroups["avatar selection"].draws.push(buttons[`avatar ${i}`]);
@@ -276,9 +275,53 @@ function initLabels() {
 	// sounds["count"] = new sound("/sounds/racestart.wav");
 }
 
-function updateSettings() {
-	socket.emit("update settings", theTable.settings);
+function enableInputs() {
+	if (!theTable || theTable.state === MAIN_MENU) {
+		toggleInputs(["player-name", "game-code"]);
+	} else {
+		toggleInputs(["player-chat", "chat-input", "demon-chat"]);
+		buttons["submit chat"].enable();
+	}
 }
+
+function toggleInputs(inputs = []) {
+	for (var e of ELEM_CONFIGS) {
+		document.getElementById(e.name).style.display = inputs.includes(e.name) ? "block" : "none";
+	}
+}
+
+function toggleSound(enable) {
+	if (!enable) {
+		for (var sound of sounds) {
+			sound.stop();
+		}
+	}
+	soundEnabled = enable;
+}
+
+function addMessage(chat, msg, player) {
+	var messages = document.getElementById(chat);
+	var item = document.createElement("li");
+	var content = msg;
+	if (player === thePlayer.name) {
+		item.style.textAlign = "right";
+	} else if (chat === "player-chat" && player) {
+		content = `${player} : ${msg}`;
+	} else if (chat === "demon-chat" && thePlayer.isDemon && player) {
+		content = `${player} => ${msg}`
+	} else if (!player) {
+		content = `<< ${msg} >>`;
+	}
+	item.textContent = content;
+	messages.appendChild(item);
+	item.scrollIntoView();
+}
+
+function clearChat(chat) {
+	document.getElementById(chat).innerHTML = "";
+}
+
+///// Game logic \\\\\
 
 function changeState(state) {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
@@ -290,36 +333,29 @@ function changeState(state) {
 	}
 
 	// buttons["sound"].enable();
+	buttons["howto"].enable();
 
-	if (state === MAIN_MENU) {
-		showInputs(["player-name", "game-code"]);
-	} else {
-		showInputs(["player-chat", "chat-input", "demon-chat"]);
-		buttons["submit chat"].enable();
-	}
+	enableInputs();
 
 	switch(state) {
 		case INIT:
-			overlayed = false;
-			selectingAvatar = false;
-			popupMessage = false;
+			overlay = undefined;
+			howtoPage = 0;
 			break;
 		case MAIN_MENU:
-			overlayed = false;
-			selectingAvatar = false;
-			popupMessage = false;
+			overlay = undefined;
 			buttons["make table"].enable();
 			buttons["join table"].enable();
-			showInputs(["player-name", "game-code"]);
 			break;
 		case TABLE_LOBBY:
+			overlay = undefined;
 			thePlayerIsPossessed = false;
 			possessedPlayers = [];
 			buttons["leave table"].enable();
 			buttons["change avatar"].enable();
 			break;
 		case TABLE_NIGHT:
-			selectingAvatar = false;
+			overlay = undefined;
 			break;
 		case TABLE_DAY:
 			if (thePlayer.isDemon) {
@@ -339,29 +375,12 @@ function changeState(state) {
 			}
 			break;
 		case TABLE_INTERFERE:
-			if (thePlayer.isDemon) {
+			if (thePlayer.isDemon && interfereUses > 0) {
 				drawGroups["interfere"].enable();
 			}
 	}
 	gameState = state;
 }
-
-function showInputs(inputs) {
-	for (var e of ELEM_CONFIGS) {
-		document.getElementById(e.name).style.display = inputs.includes(e.name) ? "block" : "none";
-	}
-}
-
-function toggleSound(enable) {
-	if (!enable) {
-		for (var sound of sounds) {
-			sound.stop();
-		}
-	}
-	soundEnabled = enable;
-}
-
-///// Game logic \\\\\
 
 function isTableOwner() {
 	return theTable && theTable.players.length > 0 && theTable.players[0].socketId === socket.id;
@@ -419,12 +438,46 @@ function getSelectedPlayer() {
 	}
 }
 
-function clearPopUp() {
-	popupMessage = undefined;
-	overlayed = false;
+function setChatHeight() {
+	if (!thePlayer || thePlayer.isDemon === chatIsDemon) return;
+	if (thePlayer.isDemon) {
+		for (var config of ELEM_CONFIGS) {
+			if (config.name === "player-chat") {
+				config.h = 0.25;
+			}
+			if (config.name === "demon-chat") {
+				config.h = 0.6;
+				config.y = 0.35;
+			}
+			if (config.name === "chat-input") {
+				config.y = 0.3;
+			}
+			buttons["submit chat"].position.y = 0.3325;
+		}
+	} else {
+		for (var config of ELEM_CONFIGS) {
+			if (config.name === "player-chat") {
+				config.h = 0.6;
+			}
+			if (config.name === "demon-chat") {
+				config.h = 0.25;
+				config.y = 0.7;
+			}
+			if (config.name === "chat-input") {
+				config.y = 0.65;
+			}
+			buttons["submit chat"].position.y = 0.6825;
+		}
+	}
+	handleResize();
+	chatIsDemon = thePlayer.isDemon;
 }
 
 ///// Client-server functions \\\\\
+
+function updateSettings() {
+	socket.emit("update settings", theTable.settings);
+}
 
 function changeAvatar(avatarId) {
 	socket.emit("change avatar", avatarId);
@@ -434,15 +487,30 @@ function changeColor(color) {
 	socket.emit("change color", color);
 }
 
-function openAvatarSelection() {
-	selectingAvatar = true;
+function enableOverlay(theOverlay) {
+	overlay = theOverlay;
+	if ([OVERLAY_AVATAR, OVERLAY_HOWTO].includes(theOverlay)) toggleInputs();
 }
 
-function clearAvatarSelection() {
-	selectingAvatar = false;
-	overlayed = false;
-	buttons["clear avatar"].disable();
-	drawGroups["avatar selection"].disable();
+function clearOverlay() {
+	enableInputs();
+	switch(overlay) {
+		case OVERLAY_POPUP:
+			buttons["clear popup"].disable();
+			break;
+		case OVERLAY_HOWTO:
+			drawGroups["howto"].disable();
+			break;
+		case OVERLAY_AVATAR:
+			drawGroups["avatar selection"].disable();
+			buttons["clear avatar"].disable();
+			break;
+	}
+	overlay = undefined;
+}
+
+function pageHowTo(inc) {
+	howtoPage = (howtoPage + inc).mod(HOW_TO_PAGES);
 }
 
 function submitChat() {
@@ -505,12 +573,16 @@ function updateTable(table) {
 		theTable = table;
 		if (change) {
 			changeState(table.state);
+			setChatHeight();
 		}
 		labels["message"].text = (thePlayer.isDemon && table.demonMessage) ? table.demonMessage : table.message;
 		labels["table"].text = `Table ${table.code}`;
+		labels["water_count"].text = `${theTable.resources.WATER} x`;
+		labels["board_count"].text = `${theTable.resources.BOARD} x`;
+		labels["rod_count"].text = `${theTable.resources.ROD} x`;
+		labels["exorcism_count"].text = `${theTable.resources.EXORCISM} x`;
 	} else {
 		theTable = false;
-		popupMessage = undefined;
 		changeState(MAIN_MENU);
 	}
 }
@@ -525,7 +597,6 @@ function handleServerDisconnect() {
 	var msg = "Server disconnected!";
 	raiseError(msg);
 	theTable = false;
-	popupMessage = undefined;
 	changeState(MAIN_MENU);
 }
 

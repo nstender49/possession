@@ -101,7 +101,7 @@ class Button {
 	}
 
 	isEnabled() {
-		return this.enabled && (!overlayed || this.isOverlay);
+		return this.enabled && (!overlay || this.isOverlay);
 	}
 
 	toggle() {
@@ -323,7 +323,7 @@ class ImageButton {
 	checkHold() {}
 
 	isEnabled() {
-		return this.enabled && (!overlayed || this.isOverlay);
+		return this.enabled && (!overlay || this.isOverlay);
 	}
 
 	toggle() {
@@ -453,7 +453,7 @@ class ShapeButton {
 	checkHold() {}
 
 	isEnabled() {
-		return this.enabled && (!overlayed || this.isOverlay);
+		return this.enabled && (!overlay || this.isOverlay);
 	}
 
 	toggle() {
@@ -568,7 +568,7 @@ class Checkbox {
 	checkHold() {}
 
 	isEnabled() {
-		return this.enabled && (!overlayed || this.isOverlay);
+		return this.enabled && (!overlay || this.isOverlay);
 	}
 
 	toggle() {
