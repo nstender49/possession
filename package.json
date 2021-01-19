@@ -12,6 +12,7 @@
   "dependencies": {
     "chai": "^4.2.0",
     "cookie": "^0.4.1",
+    "cookies-js": "^1.2.3",
     "express": "^4.17.1",
     "express-session": "^1.17.1",
     "mocha": "^8.2.1",

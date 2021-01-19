@@ -51,6 +51,7 @@ const YES_VOTE_IMAGE = new PreLoadedImage("/images/vote_yes.png");
 const NO_VOTE_IMAGE = new PreLoadedImage("/images/vote_no.png");
 const PENTAGRAM_IMAGE = new PreLoadedImage("/images/pentagram.png");
 const NAMEPLATE_IMAGE = new PreLoadedImage("/images/nameplate.png");
+const HOURGLASS_IMAGE = new PreLoadedImage("/images/hourglass.png");
 
 // Player images
 const AVATAR_COUNT = 50;
@@ -65,8 +66,13 @@ var logFull = true;
 
 // Config settings received from server.
 var newTableSettings = {
+	// Table settings
 	minPlayers: 6,
-	maxPlayers: 12,
+	maxPlayers: 12, 
+	// Time limits
+	roundTime: 300,
+	secondTime: 5,
+	voteTime: 10,
 };
 
 // Game settings
@@ -83,7 +89,9 @@ var sounds = [];
 var gameState, theTable, thePlayer, thePlayerIsPossessed;
 // Demon state
 var possessedPlayers, interfereUses, selectedPlayer, chatIsDemon;
-// Overlay 
+// Display
+var timers = [];
+// Overlay
 var overlay, popupMessage, howtoPage;
 const HOW_TO_PAGES = 2;
 const OVERLAY_POPUP = "pop up";
@@ -115,6 +123,11 @@ socket.on("chat msg", function(msg, sender) {
 
 socket.on("clear chat", function(chat) {
 	clearChat(chat);
+});
+
+socket.on("set timer", function(sec, timer) {
+	if (timers[timer]) clearTimeout(timers[timer]);
+	setTimer(sec, timer);
 });
 
 socket.on("demon msg", function(msg, player) {
@@ -180,6 +193,17 @@ function initLabels() {
 	buttons["change avatar"] = new Button({x: 0.3, y: 0.7}, "Change Avatar", 20, enableOverlay.bind(null, OVERLAY_AVATAR));
 	buttons["finish game"] = new Button({x: 0.3, y: 0.4}, "Finish", 30, doMove.bind(null, FINISH));
 
+	// Timers
+	labels["timer title"] = new Label({x: 0.302, y: 0.79}, "Vote ", 20, "right");
+	labels["timer hourglass"] = new ImageLabel({x: 0.31, y: 0.755}, 0.015, false, HOURGLASS_IMAGE);
+	labels["timer"] = new Label({x: 0.35, y: 0.79}, "30", 20);
+	drawGroups["timer"] = new DrawGroup([labels["timer title"], labels["timer hourglass"], labels["timer"]]);
+	labels["round timer title"] = new Label({x: 0.305, y: 0.235}, "Round ", 20, "right");
+	labels["round timer hourglass"] = new ImageLabel({x: 0.31, y: 0.2}, 0.015, false, HOURGLASS_IMAGE);
+	labels["round timer"] = new Label({x: 0.365, y: 0.235}, "300", 20, "right");
+	drawGroups["round timer"] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels["round timer"]]);
+	drawGroups["timers"] = new DrawGroup([drawGroups["timer"], drawGroups["round timer"]]);
+
 	// Items
 	buttons[WATER] = new ImageButton({x: 0.24, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[WATER], doMove.bind(null, WATER), false, false, "black");
 	labels["water_count"] = new Label({x: 0.18, y: 0.37}, "", 20);
@@ -203,10 +227,10 @@ function initLabels() {
 	]);
 
 	// Voting phase
-	labels[WATER] = new ImageLabel({x: 0.3, y: 0.35}, false, 0.25, ITEM_IMAGES[WATER], true);
-	labels[BOARD] = new ImageLabel({x: 0.3, y: 0.35}, false, 0.25, ITEM_IMAGES[BOARD], true);
-	labels[ROD] = new ImageLabel({x: 0.3, y: 0.35}, false, 0.25, ITEM_IMAGES[ROD], true);
-	labels[EXORCISM] = new ImageLabel({x: 0.3, y: 0.35}, false, 0.25, ITEM_IMAGES[EXORCISM], true);
+	labels[WATER] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[WATER], true);
+	labels[BOARD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[BOARD], true);
+	labels[ROD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[ROD], true);
+	labels[EXORCISM] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[EXORCISM], true);
 	buttons["vote yes"] = new Button({x: 0.25, y: 0.6}, "Yes", 20, doVote.bind(null, true), undefined, true);
 	buttons["vote no"] = new Button({x: 0.35, y: 0.6}, "No", 20, doVote.bind(null, false), undefined, true);
 	drawGroups["voting"] = new DrawGroup([
@@ -321,6 +345,17 @@ function clearChat(chat) {
 	document.getElementById(chat).innerHTML = "";
 }
 
+function setTimer(sec, timer) {
+	if (sec === 0) {
+		drawGroups[timer].disable();
+	} else {
+		console.log(`#### SET TIMER: ${sec} ${timer}`);
+		drawGroups[timer].show();
+		labels[timer].text = sec;
+		timers[timer] = Number(setTimeout(setTimer.bind(null, sec - 1, timer), 1000));
+	}
+}
+
 ///// Game logic \\\\\
 
 function changeState(state) {
@@ -341,6 +376,7 @@ function changeState(state) {
 		case INIT:
 			overlay = undefined;
 			howtoPage = 0;
+			drawGroups["timers"].disable();
 			break;
 		case MAIN_MENU:
 			overlay = undefined;
@@ -480,10 +516,12 @@ function updateSettings() {
 }
 
 function changeAvatar(avatarId) {
+	Cookies.set("avatarId", avatarId);
 	socket.emit("change avatar", avatarId);
 }
 
 function changeColor(color) {
+	Cookies.set("color", color);
 	socket.emit("change color", color);
 }
 
@@ -525,9 +563,11 @@ function makeTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (socket.connected) {
 		var name = document.getElementById("player-name").value;
+		var avatarId = Cookies("avatarId");
+		var color = Cookies("color");
 		// TODO: make settings and send them here.
 		if (name) {
-			socket.emit("make table", name, newTableSettings);
+			socket.emit("make table", name, avatarId, color, newTableSettings);
 		} else {
 			raiseError("Must provide name to make table!");
 		}
@@ -541,8 +581,10 @@ function joinTable() {
 	if (socket.connected) {
 		var name = document.getElementById("player-name").value;
 		var code = document.getElementById("game-code").value;
+		var avatarId = Cookies("avatarId");
+		var color = Cookies("color");
 		if (name && code) {
-			socket.emit("join table", code, name);
+			socket.emit("join table", code, name, avatarId, color);
 		} else {
 			raiseError("Must provide name and table code to join table!");
 		}

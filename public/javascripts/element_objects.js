@@ -28,9 +28,17 @@ class Label {
 		return this.text + this.data;
 	}
 
-	enable() {}
-	disable() {}
-	show() {}
+	enable() {
+		this.visible = true;
+	}
+	
+	disable() {
+		this.visible = false;
+	}
+
+	show() {
+		this.visible = true;
+	}
 
 	dims() {
 		ctx.font = (this.size * r) + "px " + this.font;
@@ -56,7 +64,8 @@ class Label {
 		if (absolute) {
 			ctx.fillText(this.msg(), this.position.x, this.position.y);
 		} else {
-			ctx.fillText(this.msg(), canvas.width * this.position.x, canvas.height * this.position.y);
+			console.log(`DRAWING ${this.msg()} at ${this.position.x * cvW} ${this.position.y * cvH}`);
+			ctx.fillText(this.msg(), cvW * this.position.x, cvH * this.position.y);
 		}
 		if (this.opacity < 1) {
 			ctx.restore();
@@ -173,13 +182,13 @@ class Button {
 		var margin = this.margin * r;
 	
 		// Top left corner.
-		var minX = canvas.width * this.position.x - margin * 0.5;
+		var minX = cvW * this.position.x - margin * 0.5;
 		if (this.align === "center") {
 			minX -= dims.width / 2;
 		} else if (this.align === "right") {
 			minX -= dims.width;
 		}
-		var minY = canvas.height * this.position.y - dims.height - margin * 0.5;
+		var minY = cvH * this.position.y - dims.height - margin * 0.5;
 		var maxX = minX + dims.width + margin;
 		var maxY = minY + dims.height + margin;
 		
@@ -220,7 +229,7 @@ class Button {
 		if (absolute) {
 			ctx.fillText(this.msg(), this.position.x, this.position.y);
 		} else {
-			ctx.fillText(this.text, canvas.width * this.position.x, canvas.height * this.position.y);
+			ctx.fillText(this.text, cvW * this.position.x, cvH * this.position.y);
 		}
 	}
 }
@@ -232,18 +241,28 @@ class ImageLabel {
 		this.height = height;
 		this.center = center;
 		this.absolute = absolute;
+		this.visible = true;
 		// Load image
 		this.img = img;
 	}
 
-	show() {}
-	disable() {}
+	enable() {
+		this.visible = true;
+	}
+	
+	disable() {
+		this.visible = false;
+	}
+
+	show() {
+		this.visible = true;
+	}
 
 	pos() {
 		var pos = {x: this.position.x, y: this.position.y};
 		if (!this.absolute) {
-			pos.x *= canvas.width;
-			pos.y *= canvas.height;
+			pos.x *= cvW;
+			pos.y *= cvH;
 		}
 		if (this.center) {
 			var dims = this.dims();
@@ -256,11 +275,11 @@ class ImageLabel {
 	dims() {
 		var h, w;
 		if (this.height) {
-			h = canvas.height * this.height;
-			w = this.width ? canvas.width * this.width : h * this.img.ratio;
+			h = cvH * this.height;
+			w = this.width ? cvW * this.width : h * this.img.ratio;
 		} else {
-			w = canvas.width * this.width;
-			h = this.height ? canvas.height * this.height : w / this.img.ratio;
+			w = cvW * this.width;
+			h = this.height ? cvH * this.height : w / this.img.ratio;
 		}
 		return {width: w, height: h};
 	}
@@ -269,8 +288,8 @@ class ImageLabel {
 		var pos = this.pos();
 		var dims = this.dims();
 	
-		var minX = canvas.width * pos.x;
-		var minY = canvas.height * pos.y;
+		var minX = cvW * pos.x;
+		var minY = cvH * pos.y;
 		var maxX = minX + dims.width;
 		var maxY = minY + dims.height;
 
@@ -285,6 +304,8 @@ class ImageLabel {
 	}
 
 	draw() {
+		if (!this.visible) return;
+
 		var pos = this.pos();
 		var dims = this.dims();
 
@@ -378,8 +399,8 @@ class ImageButton {
 	pos() {
 		var pos = {x: this.position.x, y: this.position.y};
 		if (!this.absolute) {
-			pos.x *= canvas.width;
-			pos.y *= canvas.height;
+			pos.x *= cvW;
+			pos.y *= cvH;
 		}
 		if (this.center) {
 			var dims = this.dims();
@@ -392,11 +413,11 @@ class ImageButton {
 	dims() {
 		var h, w;
 		if (this.height) {
-			h = canvas.height * this.height;
-			w = this.width ? canvas.width * this.width : h * this.img.ratio;
+			h = cvH * this.height;
+			w = this.width ? cvW * this.width : h * this.img.ratio;
 		} else {
-			w = canvas.width * this.width;
-			h = this.height ? canvas.height * this.height : w / this.img.ratio;
+			w = cvW * this.width;
+			h = this.height ? cvH * this.height : w / this.img.ratio;
 		}
 		return {width: w, height: h};
 	}
@@ -508,8 +529,8 @@ class ShapeButton {
 	pos() {
 		var pos = {x: this.position.x, y: this.position.y};
 		if (!this.absolute) {
-			pos.x *= canvas.width;
-			pos.y *= canvas.height;
+			pos.x *= cvW;
+			pos.y *= cvH;
 		}
 		if (this.center) {
 			var dims = this.dims();
@@ -520,7 +541,7 @@ class ShapeButton {
 	}
 
 	dims() {
-		return {width: this.width * canvas.width, height: this.height * canvas.height};
+		return {width: this.width * cvW, height: this.height * cvH};
 	}
 
 	buttonDims() {
@@ -591,8 +612,8 @@ class Checkbox {
 
 	dims() {
 		return {
-			width: canvas.width * this.size,
-			height: canvas.width * this.size,
+			width: cvW * this.size,
+			height: cvW * this.size,
 		}
 	}
 
@@ -600,8 +621,8 @@ class Checkbox {
 		var dims = this.dims();
 	
 		// Top left corner.
-		var minX = canvas.width * this.position.x - dims.width * 0.5;
-		var minY = canvas.height * this.position.y - dims.height * 0.5;
+		var minX = cvW * this.position.x - dims.width * 0.5;
+		var minY = cvH * this.position.y - dims.height * 0.5;
 		var maxX = minX + dims.width;
 		var maxY = minY + dims.height;
 		

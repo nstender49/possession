@@ -155,23 +155,25 @@ function isOnButton(button) {
 function handleResize() {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (window.innerWidth < window.innerHeight * aspect) {
-		canvas.width = window.innerWidth;
-		canvas.height = window.innerWidth/ aspect;
-		r = canvas.width / 1000;
+		cvW = window.innerWidth;
+		cvH = window.innerWidth/ aspect;
+		r = cvW / 1000;
 	} else {
-		canvas.width = window.innerHeight * aspect;
-		canvas.height = window.innerHeight;
- 		r = canvas.height * aspect / 1000;
+		cvW = window.innerHeight * aspect;
+		cvH = window.innerHeight;
+ 		r = cvH * aspect / 1000;
 	}
+	resizeCanvas(cvW, cvH);
+
 	// Resize input boxes
 	for (var config of ELEM_CONFIGS) {
 		var elem = document.getElementById(config.name);
 		elem.style.position = "absolute";
-		elem.style.left = (canvas.getBoundingClientRect().left + canvas.width * config.x) + "px";
-		elem.style.top = (canvas.getBoundingClientRect().top + canvas.height * config.y) + "px";
+		elem.style.left = (canvas.getBoundingClientRect().left + cvW * config.x) + "px";
+		elem.style.top = (canvas.getBoundingClientRect().top + cvH * config.y) + "px";
 		if (config.w) {
-			elem.style.width = (canvas.width * config.w) + "px";
-			elem.style.height = (canvas.height * config.h) + "px";
+			elem.style.width = (cvW * config.w) + "px";
+			elem.style.height = (cvH * config.h) + "px";
 		}
 		if (config.size) {
 			elem.style.fontSize = (config.size * r) + "px";
@@ -182,6 +184,15 @@ function handleResize() {
 		document.getElementById("player-name").value = "P" + Math.floor(Math.random() * 100);
 		document.getElementById("game-code").value = "AAAA";
 	}
+}
+
+function resizeCanvas(w, h) {
+    let ratio = window.devicePixelRatio;
+	canvas.width = w * ratio;
+    canvas.height = h * ratio;
+    canvas.style.width = w + "px";
+	canvas.style.height = h + "px";
+    canvas.getContext("2d").scale(ratio, ratio);
 }
 
 //////////  Drawing  \\\\\\\\\\
@@ -261,7 +272,7 @@ function draw() {
 	if (![MAIN_MENU, TABLE_LOBBY].includes(gameState) && thePlayer && thePlayer.isDemon) {
 		labels["interfere uses"].draw();
 		if (selectedPlayer) {
-			drawCircle(getSelectedPlayer().color, 0.585 * canvas.width, 0.675 * canvas.height, 0.01 * canvas.width);
+			drawCircle(getSelectedPlayer().color, 0.585 * cvW, 0.325 * cvH, 0.01 * cvW);
 		}
 	}
 
@@ -286,10 +297,10 @@ function draw() {
 function drawHowTo() {
 	overlayed = true;
 
-	var x = 0.01 * canvas.width;
-	var y = 0.03 * canvas.height;
-	var w = 0.98 * canvas.width;
-	var h = 0.92 * canvas.height;
+	var x = 0.01 * cvW;
+	var y = 0.03 * cvH;
+	var w = 0.98 * cvW;
+	var h = 0.92 * cvH;
 	drawRect("#333333", x, y, w, h, true);
 
 
@@ -305,8 +316,8 @@ function drawHowTo() {
 				"",
 				"",
 				"The goal of the demon is to possess half of the humans, the goal of the humans is to liberate all of the humans.",
-				"    If half of the human players are possessed at the *end* of a round, the demon and the possessed players win.",
-				"    If all of the humans are liberated, the demon *and* the humans that were freed in the last round (the damned) lose.", 
+				"    If half of the human players are possessed at the end of a round, the demon and the possessed players win.",
+				"    If all of the humans are liberated, the demon and the humans that were freed in the last round (the damned) lose.", 
 				"    Human players who are possessed may choose to cooperate with the demon or not, but be careful not to be freed in the last round!",
 				"",
 				"",
@@ -316,7 +327,7 @@ function drawHowTo() {
 				"    The player may declare their intended target during proposal and voting, but they may select whoever they want, except themself."
 			];
 			drawRect("#575757", 0.03, 0.13, 0.94, 0.24);
-			drawRect("#575757", 0.03, 0.64, 0.94, 0.24);
+			drawRect("#575757", 0.03, 0.64, 0.94, 0.2);
 			for (var i = 0; i < intro.length; i++) {
 				drawText(intro[i], 0.05, 0.17 + i * 0.04, 15, "left");
 			}
@@ -350,7 +361,7 @@ function drawHowTo() {
 				],
 				EXORCISM: [
 					"Cross: a player uses the cross to perform an exorcism on another player, freeing them from possession.",
-					"    Players may perform one exorcism per round. The target player is knocked unconscious of the next round,",
+					"    Players may perform one exorcism per round. The target player is knocked unconscious until the next round,",
 					"    unable to speak or vote (they are not counted in vote ratio).  Performing an exorcism gives the demon a ",
 					"    window into the world, granting them one additional chance to interfere with the Spirit Board.",
 				],
@@ -383,14 +394,14 @@ function drawHowTo() {
 function drawAvatarSelection() {
 	overlayed = true;
 
-	var x = 0.01 * canvas.width;
-	var y = 0.03 * canvas.height;
-	var w = 0.98 * canvas.width;
-	var h = 0.92 * canvas.height;
+	var x = 0.01 * cvW;
+	var y = 0.03 * cvH;
+	var w = 0.98 * cvW;
+	var h = 0.92 * cvH;
 	drawRect("#333333", x, y, w, h, true);
 
-	var gapWidth = 0.0067 * canvas.width;
-	var boxWidth = 0.09 * canvas.width;
+	var gapWidth = 0.0067 * cvW;
+	var boxWidth = 0.09 * cvW;
 	var boxHeight = boxWidth / PLAYER_IMAGES[0].ratio;
 
 	drawGroups["avatar selection"].enable();
@@ -404,16 +415,16 @@ function drawAvatarSelection() {
 			drawCircle(thePlayer.color, x + gapWidth * (row + 1) + boxWidth * (row + 0.5), y + gapWidth * (col + 1) + boxHeight * (col + 0.5), boxWidth / 2, true);
 		}
 		buttons[`avatar ${i}`].position = {x: x + gapWidth * (row + 1) + boxWidth * row, y: y + gapWidth * (col + 1) + boxHeight * col};
-		buttons[`avatar ${i}`].width = boxWidth / canvas.width;
+		buttons[`avatar ${i}`].width = boxWidth / cvW;
 		buttons[`avatar ${i}`].draw();
 	}
 
-	var gapWidth = 0.005 * canvas.width;
-	var boxWidth = 0.06 * canvas.width;
+	var gapWidth = 0.005 * cvW;
+	var boxWidth = 0.06 * cvW;
 	for (var i = 0; i < 14; i ++) {
 		var color = PLAYER_COLORS[i];
 		var boxX = x + gapWidth * (i + 1) + boxWidth * i;
-		var boxY = y + 0.8 * canvas.height;
+		var boxY = y + 0.8 * cvH;
 		drawColorSelector(color, boxX, boxY, boxWidth, boxWidth);
 	}
 
@@ -426,8 +437,8 @@ function drawColorSelector(color, x, y, w, h) {
 		drawRect("gray", x - 2, y - 2, w + 4, h + 4, true);
 	}
 	buttons[`color ${color}`].position = {x: x, y: y};
-	buttons[`color ${color}`].width = w / canvas.width;
-	buttons[`color ${color}`].height = h / canvas.height;
+	buttons[`color ${color}`].width = w / cvW;
+	buttons[`color ${color}`].height = h / cvH;
 	buttons[`color ${color}`].draw();
 	if (theTable.playerColors.includes(color)) {
 		buttons[`color ${color}`].disable();
@@ -438,10 +449,10 @@ function drawColorSelector(color, x, y, w, h) {
 
 function drawPopUp() {
 	overlayed = true;
-	var x = 0.15 * canvas.width;
-	var y = 0.4 * canvas.height;
-	var w = 0.3 * canvas.width;
-	var h = 0.18 * canvas.height;
+	var x = 0.15 * cvW;
+	var y = 0.4 * cvH;
+	var w = 0.3 * cvW;
+	var h = 0.18 * cvH;
 	drawRect("#333333", x, y, w, h, true);
 	drawRect("#810000", x + 10, y + 10, w - 20, h - 20, true);
 	var msg = new Label({x: 0.3, y: 0.46}, popupMessage, 20);
@@ -463,19 +474,20 @@ function drawTable() {
 	labels["table_img"].draw();
 	scaleLabelsToWidth([labels["message"]], labels["table_img"].dims().width * 0.9, 10);
 	labels["message"].draw();
+	drawGroups["timers"].draw();
 
 	// Draw players
 	drawPlayers();
 }
 
 function drawPlayers() {
-	var padRad = 0.04 * canvas.width;
+	var padRad = 0.04 * cvW;
 	var tableRad = labels["table_img"].dims().width / 2 + padRad * 1.25;
-	var tableX = labels["table_img"].position.x * canvas.width;
-	var tableY = labels["table_img"].position.y * canvas.height;
+	var tableX = labels["table_img"].position.x * cvW;
+	var tableY = labels["table_img"].position.y * cvH;
 	var angle = 180; 
 	var delta = 360 / (theTable.players.length - ([TABLE_LOBBY, TABLE_END].includes(gameState) ? 0 : 1));
-	playerButtons = [];
+
 	for (var player of theTable.players) {
 		if (player.isDemon) continue;
 		var rad = Math.PI * angle / 180;
@@ -489,42 +501,35 @@ function drawPlayers() {
 function drawPlayerPad(player, x, y, r) {
 	// Draw pentagram under the player pad if player is possessed for player and demon.
 	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
-		var pent = new ImageLabel({x: x, y: y}, r * 2.5 / canvas.width, false, PENTAGRAM_IMAGE, true, true);
-		pent.draw();
+		drawImage(PENTAGRAM_IMAGE, x, y, r * 2.5 / cvW, false, true, true);
 	}
 	drawCircle(player.color, x, y, r);
+
 	// Move player avatar/button to position.
 	buttons[player.name].position = {x: x - r * 0.25, y: y - r * 0.18};
-	buttons[player.name].width = r * 1.6 / canvas.width;
+	buttons[player.name].width = r * 1.6 / cvW;
 	buttons[player.name].img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
 	buttons[player.name].enabled = thePlayer.isDemon || gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name;
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
-	if (player.isExorcised) {
-		var cross = new ImageLabel({x: x - r * 0.25, y: y - r * 0.25}, false, r * 1.2 / canvas.height, ITEM_IMAGES[EXORCISM], true, true);
-		cross.draw();
-	}
+	if (player.isExorcised) drawImage(ITEM_IMAGES[EXORCISM], x - r * 0.25, y - r * 0.25, false, r * 1.2 / cvH, true, true);
+
 	// Draw name
-	var plate = new ImageLabel({x: x, y: y + r * 0.7}, r * 2 / canvas.width, false, NAMEPLATE_IMAGE, true, true);
-	plate.draw();
+	drawImage(NAMEPLATE_IMAGE, x, y + r * 0.7, r * 2 / cvW, false, true, true);
 	var name = new Label({x: x, y: y + r * 0.85}, player.name, 15, false, false, "black");
 	scaleLabelsToWidth([name], r * 2, 5);
 	name.draw(true);
+
 	// Draw player's move
 	if (player.move) { 
-		var move = new ImageLabel({x: x + r * 0.5, y: y - r * 0.4}, false, r * 0.7 / canvas.height, ITEM_IMAGES[player.move.type], true, true);
-		move.draw();
-		if (player.move.success === false) {
-			var fail = new ImageLabel({x: x + r * 0.5, y: y - r * 0.4}, false, r * 0.6 / canvas.height, FAIL_X_IMAGE, true, true);
-			fail.draw();
-		}
+		drawImage(ITEM_IMAGES[player.move.type], x + r * 0.5, y - r * 0.4, false, r * 0.7 / cvH, true, true);
+		if (player.move.success === false) drawImage(FAIL_X_IMAGE, x + r * 0.5, y - r * 0.4, false, r * 0.6 / cvH, true, true);
 	}
 	// Draw player vote indicator
 	if (player.voted) {
 		var image = player.vote === undefined ? VOTED_IMAGE : (player.vote ? YES_VOTE_IMAGE : NO_VOTE_IMAGE);
-		var voted = new ImageLabel({x: x + r * 0.5, y: y + r * 0.2}, false, r * 0.7 / canvas.height, image, true, true);
-		voted.draw();
+		drawImage(image, x + r * 0.5, y + r * 0.2, undefined, r * 0.7 / cvH, true, true);
 	}
 }
 
@@ -541,10 +546,10 @@ function drawImage(image, x, y, w, h, center, absolute) {
 }
 
 function drawRect(color, x, y, w, h, absolute=false) {
-	var x = x * (absolute ? 1 : canvas.width);
-	var y = y * (absolute ? 1 : canvas.height);
-	var w = w * (absolute ? 1 : canvas.width);
-	var h = h * (absolute ? 1 : canvas.height);
+	var x = x * (absolute ? 1 : cvW);
+	var y = y * (absolute ? 1 : cvH);
+	var w = w * (absolute ? 1 : cvW);
+	var h = h * (absolute ? 1 : cvH);
 	ctx.fillStyle = color;
 	ctx.fillRect(x, y, w, h);
 }
@@ -639,7 +644,7 @@ window.requestAnimFrame = (function () {
 		   };
 })();
 
-var hand, canvas, ctx;
+var hand, canvas, ctx, cvW, cvH;
 var clickCursor = false,
 	aspect = 16 / 10,
 	ERROR_DURATION_SEC = 2.5,
