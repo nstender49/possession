@@ -1009,8 +1009,8 @@ function handleNewConnection(socket, sessionId) {
 		} else {
 			clearTable(socket);
 		}
-	} else {
-		//console.log("ADDING NEW PLAYER FOR " + sessionId);
+	} else { 
+		console.log("ADDING NEW PLAYER FOR " + sessionId);
 		players.push({
 			// Session/connection
 			socket: socket,
@@ -1050,6 +1050,7 @@ function playerDisconnected(socket) {
 		}
 		player.socket = undefined;
 		inactive.push(player);
+		console.log(`PUSHING PLAYER WITH SESSION ID ${player.sessionId} TO INACTIVE`);
 	}
 }
 
