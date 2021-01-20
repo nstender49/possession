@@ -605,11 +605,9 @@ function updateTable(table) {
 			}
 		}
 
-		console.log(`UPDATE TABLE`);
 		var newTimers = [];
 		if (theTable) {
 			for (var timer in table.timers) {
-				console.log(`\tCHECKING TIME: ${timer} ${theTable.timers[timer]} ${table.timers[timer]}`);
 				if (theTable.timers[timer] !== table.timers[timer]) newTimers.push(timer);
 			}
 		}
