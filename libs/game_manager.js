@@ -968,31 +968,36 @@ function handleNewConnection(socket, sessionId) {
 	player = getInactiveBySessionId(sessionId);
 	if (player) {
 		players.push(player);
-		//console.log("FOUND INACTIVE PLAYER! " + sessionId);
+		console.log("FOUND INACTIVE PLAYER! " + sessionId);
 		removeByValue(inactive, player);
 		player.socket = socket;
 		if (player.tableCode) {
-			//console.log("PLAYER HAS A TABLE CODE! " + sessionId);
+			console.log("PLAYER HAS A TABLE CODE! " + sessionId);
 			var table = getTableByCode(player.tableCode);
 			if (table) {
-				//console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
+				console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
 				var tablePlayer = getTablePlayerBySessionId(sessionId, table);
 				tablePlayer.socketId = socket.id;
 				tablePlayer.active = true;
 				//Update player on the state of the world.
 				updateTable(table);
 				// Send chat
+				console.log("UPDATING TABLE LOG");
 				for (var l of chatLogs[table.code][GENERAL]) {
 					socket.emit("chat msg", l.msg, l.sender);
 				}
 				// Send demon chat if it exists
+				console.log("UPDATING DEMON LOG");
 				if (chatLogs[table.code][tablePlayer.name]) {
 					for (var l of chatLogs[table.code][tablePlayer]) {
 						socket.emit("demon msg", l.msg, l.player);
 					}
 				}
+				console.log("GETTTING GAME");
 				var game = getGameByCode(table.code);
+				console.log("UPDATING POSSESSION");
 				if (game && game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
+				console.log("UPDATING DEMON!");
 				if (tablePlayer.isDemon) {
 					player.socket.emit("possessed players", game.possessedPlayers);
 					player.socket.emit("update interfere", game.interfereUses);
