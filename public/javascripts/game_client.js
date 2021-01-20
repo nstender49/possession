@@ -72,7 +72,7 @@ var logFull = true;
 // Config settings received from server.
 var newTableSettings = {
 	// Table settings
-	minPlayers: 6,
+	minPlayers: 3,
 	maxPlayers: 12, 
 	// Time limits
 	roundTime: 300,

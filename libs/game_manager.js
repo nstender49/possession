@@ -1002,7 +1002,6 @@ function handleNewConnection(socket, sessionId) {
 					player.socket.emit("update interfere", game.interfereUses);
 				}
 			} else {
-				//console.log("PLAYER'S TABLE DOES NOT EXIST, REMOVING");
 				player.tableCode = undefined;
 				clearTable(socket);
 			}
