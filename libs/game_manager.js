@@ -808,6 +808,7 @@ function handleNewGame(table) {
 	game.possessedPlayers = [];
 
 	// Clear chat logs
+	chatLogs[table.code] = [];
 	chatLogs[table.code][GENERAL] = [];
 	clearChats(table);
 
@@ -989,7 +990,7 @@ function handleNewConnection(socket, sessionId) {
 				// Send demon chat if it exists
 				console.log("UPDATING DEMON LOG");
 				if (chatLogs[table.code][tablePlayer.name]) {
-					for (var l of chatLogs[table.code][tablePlayer]) {
+					for (var l of chatLogs[table.code][tablePlayer.name]) {
 						socket.emit("demon msg", l.msg, l.player);
 					}
 				}
