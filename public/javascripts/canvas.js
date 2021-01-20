@@ -510,7 +510,7 @@ function drawPlayerPad(player, x, y, r) {
 
 	// Draw name
 	drawImage(NAMEPLATE_IMAGE, x, y + r * 0.7, r * 2 / cvW, false, true, true);
-	drawText(player.name, x, y + r * 0.85, 15, undefined, true, r * 2, 5, "black");
+	drawText(player.active ? player.name : `< ${player.name} >`, x, y + r * 0.85, 15, undefined, true, r * 2, 5, player.active ? "black" : "gray");
 
 	// Draw player's move
 	if (player.move) { 

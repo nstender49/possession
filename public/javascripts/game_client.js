@@ -41,6 +41,11 @@ ITEM_IMAGES[ROD] = new PreLoadedImage("/images/rod.png");
 ITEM_IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
 ITEM_IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
 
+// Timers
+ROUND_TIMER = "round timer";
+MOVE_TIMER = "move timer";
+DEMON_TIMER = "demon timer";
+
 // Sound 
 const SOUND_ON_IMG = new PreLoadedImage("/images/sound_on.png");
 const SOUND_OFF_IMG = new PreLoadedImage("/images/sound_off.png");
@@ -107,13 +112,6 @@ socket.on("update table", function(table) {
 	updateTable(table);
 });
 
-// Update the hand for a specific player.
-// Hands are updated separately from table to make showing only certain players hands easy.
-socket.on("update hand", function(name, hand, clear) {
-	if (clear) { hands = []; }
-	hands[name] = hand;
-});
-
 // Emit an error to the player from the server.
 socket.on("server error", function(msg) {
 	raiseError(msg);
@@ -125,11 +123,6 @@ socket.on("chat msg", function(msg, sender) {
 
 socket.on("clear chat", function(chat) {
 	clearChat(chat);
-});
-
-socket.on("set timer", function(sec, timer) {
-	if (timers[timer]) clearTimeout(timers[timer]);
-	setTimer(sec, timer);
 });
 
 socket.on("demon msg", function(msg, player) {
@@ -196,15 +189,14 @@ function initLabels() {
 	buttons["finish game"] = new Button(0.3, 0.4, "Finish", 30, doMove.bind(null, FINISH));
 
 	// Timers
-	labels["timer title"] = new Label(0.302, 0.79, "Time ", 20).setAlign("right");
-	labels["timer hourglass"] = new ImageLabel({x: 0.31, y: 0.755}, 0.015, false, HOURGLASS_IMAGE);
-	labels["timer"] = new Label(0.35, 0.79, "{}", 20);
-	drawGroups["timer"] = new DrawGroup([labels["timer title"], labels["timer hourglass"], labels["timer"]]);
-	labels["round timer title"] = new Label(0.305, 0.235, "Round ", 20).setAlign("right");
-	labels["round timer hourglass"] = new ImageLabel({x: 0.31, y: 0.2}, 0.015, false, HOURGLASS_IMAGE);
-	labels["round timer"] = new Label(0.365, 0.235, "{}", 20).setAlign("right");
-	drawGroups["round timer"] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels["round timer"]]);
-	drawGroups["timers"] = new DrawGroup([drawGroups["timer"], drawGroups["round timer"]]);
+	labels["move timer hourglass"] = new ImageLabel({x: 0.28, y: 0.755}, 0.015, false, HOURGLASS_IMAGE);
+	labels[MOVE_TIMER] = new Label(0.32, 0.79, "{}", 20);
+	drawGroups[MOVE_TIMER] = new DrawGroup([labels["move timer hourglass"], labels[MOVE_TIMER]]);
+	labels["round timer title"] = new Label(0.26, 0.235, "Round", 20);
+	labels["round timer hourglass"] = new ImageLabel({x: 0.295, y: 0.2}, 0.015, false, HOURGLASS_IMAGE);
+	labels[ROUND_TIMER] = new Label(0.375, 0.235, "{}", 20).setAlign("right");
+	drawGroups[ROUND_TIMER] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels[ROUND_TIMER]]);
+	drawGroups["timers"] = new DrawGroup([drawGroups[MOVE_TIMER], drawGroups[ROUND_TIMER]]);
 
 	// Items
 	buttons[WATER] = new ImageButton({x: 0.24, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[WATER], doMove.bind(null, WATER), false, false, "black");
@@ -340,13 +332,21 @@ function clearChat(chat) {
 	document.getElementById(chat).innerHTML = "";
 }
 
-function setTimer(sec, timer) {
-	if (sec === 0) {
-		drawGroups[timer].disable();
+function formatTimer(time) {
+	var diff = Math.floor((time - Date.now()) / 1000);
+	if (diff < 60) return `${diff}s`;
+	return `${Math.floor(diff / 60)}m${(diff % 60).toString().padStart(2, "0")}s`;
+}
+
+function setTimer(timer) {
+	var label = timer === ROUND_TIMER ? ROUND_TIMER : MOVE_TIMER;
+	if (timers[label]) clearTimeout(timers[label]);
+	if (!theTable || theTable.timers[timer] === undefined || Date.now() > theTable.timers[timer]) {
+		drawGroups[label].disable();
 	} else {
-		drawGroups[timer].show();
-		labels[timer].setData(sec);
-		timers[timer] = Number(setTimeout(setTimer.bind(null, sec - 1, timer), 1000));
+		drawGroups[label].show();
+		labels[label].setData(formatTimer(theTable.timers[timer]));
+		timers[label] = Number(setTimeout(setTimer.bind(null, timer), 1000));
 	}
 }
 
@@ -604,11 +604,25 @@ function updateTable(table) {
 				buttons[player.name] = new ImageButton({x: 0, y: 0}, 0, false, true, true, PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.sessionId, player.name));
 			}
 		}
+
+		console.log(`UPDATE TABLE`);
+		var newTimers = [];
+		if (theTable) {
+			for (var timer in table.timers) {
+				console.log(`\tCHECKING TIME: ${timer} ${theTable.timers[timer]} ${table.timers[timer]}`);
+				if (theTable.timers[timer] !== table.timers[timer]) newTimers.push(timer);
+			}
+		}
+
 		var change = !theTable || gameState != table.state;
 		theTable = table;
 		if (change) {
 			changeState(table.state);
 			setChatHeight();
+		}
+		// Update labels that use table data.
+		for (var timer of newTimers) {
+			setTimer(timer);
 		}
 		labels["message"].text = (thePlayer.isDemon && table.demonMessage) ? table.demonMessage : table.message;
 		labels["table"].setData(table.code);

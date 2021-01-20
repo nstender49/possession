@@ -47,6 +47,11 @@ const PLAYER_COLORS = [
 ];
 const AVATAR_COUNT = 50;
 
+// Timers
+ROUND_TIMER = "round timer";
+MOVE_TIMER = "move timer";
+DEMON_TIMER = "demon timer";
+
 // Game states
 const INIT = "init";
 const MAIN_MENU = "main menu";
@@ -149,6 +154,7 @@ function createTable(settings) {
 		message: WAIT_MSG,
 		demonMessage: undefined,
 		resources: [],
+		timers: [],
 		demonId: undefined,
 		currentMove: undefined,
 	};
@@ -226,20 +232,9 @@ function joinTable(socket, code, name, avatarId, color) {
 	}
 	// Update player on the current state of the world.
 	updateTable(table);
+	// Get player up to speed on chat
 	for (var l of chatLogs[table.code][GENERAL]) {
 		socket.emit("chat msg", l.msg, l.sender);
-	}
-	// TODO: this is for recovering player, belong with inactive player stuff...
-	if (chatLogs[table.code][name]) {
-		for (var l of chatLogs[table.code][name]) {
-			socket.emit("demon msg", l.msg, l.player);
-		}
-	}
-	var game = getGameByCode(table.code);
-	if (game) {
-		if (game.possessedPlayers.includes(name)) {
-			targetPlayer.socket.emit("possession", doPossess);
-		}
 	}
 }
 
@@ -370,25 +365,17 @@ function clearChats(table) {
 	}
 }
 
-function setTimer(player, sec, isRound) {
-	player.socket.emit("set timer", sec, isRound ? "round timer" : "timer");
-}
-
-function setTableTimer(table, sec, isRound) {
-	for (var tablePlayer of table.players) {
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
-		if (player) setTimer(player, sec, isRound);
-	}
-}
-
 function clearTimer(table) {
 	if (table.timerId) clearTimeout(table.timerId);
-	setTableTimer(table, 0);
+	table.timerId = undefined;
+	table.timers[MOVE_TIMER] = false;
+	table.timers[DEMON_TIMER] = false;
 }
 
 function clearRoundTimer(table) {
 	if (table.roundTimerId) clearTimeout(table.roundTimerId);
-	setTableTimer(table, 0, true);
+	table.roundTimerId = undefined;
+	table.timers[ROUND_TIMER] = false;
 }
 
 function emitErrorToTable(table, error) {
@@ -601,13 +588,14 @@ function advanceRound(table) {
 			if (table.currentMove.type === PASS) {
 				table.message = "All players have made their move, night is falling...";
 				table.state = TABLE_DISPLAY;
+				clearRoundTimer(table);
 				autoAdvanceRound(table, ROUND_OVER_DISPLAY_SEC);
 			} else {
 				table.message = `${table.currentMove.playerName} wants to ${ITEM_PROPOSE_MSG[table.currentMove.type]}, second?`;
 				table.demonMessage = undefined;
 				table.state = TABLE_SECONDING;
-				setTableTimer(table, table.settings.secondTime);
-				autoAdvanceRound(table, table.settings.secondTime + 1);
+				table.timers[MOVE_TIMER] = getTimerValue(table.settings.secondTime);
+				autoAdvanceRound(table, table.settings.secondTime);
 			}
 			clearVotes(table);
 			break;
@@ -617,8 +605,8 @@ function advanceRound(table) {
 			if (yesVotes.length > 0) {
 				table.message = `${table.currentMove.playerName} wants to ${ITEM_PROPOSE_MSG[table.currentMove.type]} and ${yesVotes[0]} seconded. Vote now.`;
 				table.state = TABLE_VOTING;
-				setTableTimer(table, table.settings.voteTime);
-				autoAdvanceRound(table, table.settings.voteTime + 1);
+				table.timers[MOVE_TIMER] = getTimerValue(table.settings.voteTime);
+				autoAdvanceRound(table, table.settings.voteTime);
 			} else {
 				var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
 				tablePlayer.move.success = false;
@@ -636,8 +624,8 @@ function advanceRound(table) {
 				tablePlayer.move.success = true;
 				table.message = `The vote succeeds ${yesVotes.length}-${numAwake(table) - yesVotes.length}. ${table.currentMove.playerName} will now select a player.`;
 				table.state = TABLE_SELECT;
-				setTableTimer(table, table.settings.selectTime);
-				autoAdvanceRound(table, table.settings.selectTime + 1);
+				table.timers[MOVE_TIMER] = getTimerValue(table.settings.selectTime);
+				autoAdvanceRound(table, table.settings.selectTime);
 			} else {
 				tablePlayer.move.success = false;
 				table.message = `The vote failed ${yesVotes.length}-${numAwake(table) - yesVotes.length}`;
@@ -664,7 +652,7 @@ function advanceRound(table) {
 						table.demonMessage = `Players are testing ${targetTablePlayer.name}, interfere?`;
 						table.state = TABLE_INTERFERE;
 						var demonPlayer = getPlayerBySocketId(table.demonId);
-						setTimer(demonPlayer, table.settings.interfereTime);
+						table.timers[DEMON_TIMER] = getTimerValue(table.settings.interfereTime);
 						break;
 					case ROD:
 						var game = getGameByCode(table.code);
@@ -836,11 +824,16 @@ function handleNewGame(table) {
 	table.resources = {
 		WATER: 0,
 	};
+	table.timers = {
+		ROUND_TIMER: false,
+		MOVE_TIMER: false,
+		DEMON_TIMER: false,
+	};
 	return true;
 }
 
 function handleNewRound(table) {	
-	setTableTimer(table, table.settings.roundTime, true);
+	table.timers[ROUND_TIMER] = getTimerValue(table.settings.roundTime);
 	table.roundTimerId = Number(setTimeout(timeoutRound.bind(null, table), 1000 * (table.settings.roundTime + 1)));
 
 	var game = getGameByCode(table.code);
@@ -855,7 +848,7 @@ function handleNewRound(table) {
 	// Update resources
 	table.resources = {
 		BOARD: 1,
-		WATER: table.resources[WATER]+ 1,
+		WATER: table.resources[WATER] + 1,
 		ROD: 1,
 		EXORCISM: 1,
 	};
@@ -952,6 +945,10 @@ function removeByValue(arr, val) {
 	return arr.splice(index, 1)[0];
 }
 
+function getTimerValue(sec) {
+	return Date.now() + sec * 1000;
+}
+
 ////// Connection logic \\\\\\\\\\
 
 function handleNewConnection(socket, sessionId) {
@@ -984,6 +981,26 @@ function handleNewConnection(socket, sessionId) {
 				tablePlayer.active = true;
 				//Update player on the state of the world.
 				updateTable(table);
+				// Send chat
+				for (var l of chatLogs[table.code][GENERAL]) {
+					socket.emit("chat msg", l.msg, l.sender);
+				}
+				// Send demon chat if it exists
+				if (chatLogs[table.code][tablePlayer.name]) {
+					for (var l of chatLogs[table.code][tablePlayer]) {
+						socket.emit("demon msg", l.msg, l.player);
+					}
+				}
+				var game = getGameByCode(table.code);
+				if (game) {
+					if (game.possessedPlayers.includes(tablePlayer.name)) {
+						player.socket.emit("possession", doPossess);
+					}
+				}
+				if (tablePlayer.isDemon) {
+					player.socket.emit("possessed players", game.possessedPlayers);
+					player.socket.emit("update interfere", game.interfereUses);
+				}
 			} else {
 				//console.log("PLAYER'S TABLE DOES NOT EXIST, REMOVING");
 				player.tableCode = undefined;
