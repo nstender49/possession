@@ -626,10 +626,10 @@ function updateTable(table) {
 		}
 		labels["message"].text = (thePlayer.isDemon && table.demonMessage) ? table.demonMessage : table.message;
 		labels["table"].setData(table.code);
-		labels["water_count"].setData(theTable.resources.WATER);
-		labels["board_count"].setData(theTable.resources.BOARD);
-		labels["rod_count"].setData(theTable.resources.ROD);
-		labels["exorcism_count"].setData(theTable.resources.EXORCISM);
+		labels["water_count"].setData(theTable.resources[WATER]);
+		labels["board_count"].setData(theTable.resources[BOARD]);
+		labels["rod_count"].setData(theTable.resources[ROD]);
+		labels["exorcism_count"].setData(theTable.resources[EXORCISM]);
 	} else {
 		theTable = false;
 		changeState(MAIN_MENU);

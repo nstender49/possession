@@ -106,7 +106,7 @@ class TextElement extends Element {
 	}
 
 	setData(val) {
-		if (val) {
+		if (val !== undefined) {
 			this.text = this.text.replace(this.data, val);
 			this.data = val;
 		}
