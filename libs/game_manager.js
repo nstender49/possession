@@ -992,11 +992,7 @@ function handleNewConnection(socket, sessionId) {
 					}
 				}
 				var game = getGameByCode(table.code);
-				if (game) {
-					if (game.possessedPlayers.includes(tablePlayer.name)) {
-						player.socket.emit("possession", doPossess);
-					}
-				}
+				if (game && game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
 				if (tablePlayer.isDemon) {
 					player.socket.emit("possessed players", game.possessedPlayers);
 					player.socket.emit("update interfere", game.interfereUses);
