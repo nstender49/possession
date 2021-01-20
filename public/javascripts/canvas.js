@@ -34,7 +34,7 @@ function handleMouseMove(event) {
 	cursorX = event.pageX - canvas.offsetLeft;
 	cursorY = event.pageY - canvas.offsetTop;
 	for (var button of getButtons()) {
-		if (isOnButton(button)) {
+		if (button.under(cursorX, cursorY)) {
 			if (!clickCursor) {
 				$("#game-canvas").css("cursor", "pointer");
 				clickCursor = true;
@@ -54,7 +54,7 @@ function handleMouseMove(event) {
 function handleMouseDown(event) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	for (var button of getButtons()) {
-		if (isOnButton(button)) {
+		if (button.under(cursorX, cursorY)) {
 			button.down = true;
 			return;
 		}
@@ -144,14 +144,6 @@ function handleKeyUp(event) {
 	}
 }
 
-function isOnButton(button) {
-	if (button.isEnabled()) {
-		buttonDims = button.buttonDims();
-		return cursorX >= buttonDims.left && cursorX <= buttonDims.right && cursorY <= buttonDims.bot && cursorY >= buttonDims.top;
-	}
-	return false;
-}
-
 function handleResize() {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (window.innerWidth < window.innerHeight * aspect) {
@@ -201,7 +193,7 @@ function draw() {
 	drawRect(BACKGROUND_COLOR, 0, 0, 1, 1);
 
 	// Check for holding buttons.
-	for (var button of getButtons()) button.checkHold();
+	for (var button of getButtons()) button.checkHold(cursorX, cursorY);
 
 	buttons["howto"].draw();
 	if (gameState !== MAIN_MENU) buttons["submit chat"].draw();
@@ -371,7 +363,7 @@ function drawHowTo() {
 			for (var item of items) {
 				if (Math.round(imageY * 100) % 2 == 1)
 					drawRect("#575757", imageX - imageSize, imageY - imageSize * 1.6, 0.95, imageSize * 3.2);
-				var l = new ImageLabel({x: imageX, y: imageY}, imageSize, false, ITEM_IMAGES[item], true);
+				var l = new ImageLabel({x: imageX, y: imageY}, imageSize, false, ITEM_IMAGES[item]).setCenter(true);
 				l.draw();
 				textY = imageY - 0.04;
 				imageY += imageInc;
@@ -414,7 +406,7 @@ function drawAvatarSelection() {
 		if (i === thePlayer.avatarId) {
 			drawCircle(thePlayer.color, x + gapWidth * (row + 1) + boxWidth * (row + 0.5), y + gapWidth * (col + 1) + boxHeight * (col + 0.5), boxWidth / 2, true);
 		}
-		buttons[`avatar ${i}`].position = {x: x + gapWidth * (row + 1) + boxWidth * row, y: y + gapWidth * (col + 1) + boxHeight * col};
+		buttons[`avatar ${i}`].setPosition(x + gapWidth * (row + 1) + boxWidth * row, y + gapWidth * (col + 1) + boxHeight * col);
 		buttons[`avatar ${i}`].width = boxWidth / cvW;
 		buttons[`avatar ${i}`].draw();
 	}
@@ -436,7 +428,7 @@ function drawColorSelector(color, x, y, w, h) {
 	if (color === thePlayer.color) {
 		drawRect("gray", x - 2, y - 2, w + 4, h + 4, true);
 	}
-	buttons[`color ${color}`].position = {x: x, y: y};
+	buttons[`color ${color}`].setPosition(x, y);
 	buttons[`color ${color}`].width = w / cvW;
 	buttons[`color ${color}`].height = h / cvH;
 	buttons[`color ${color}`].draw();
@@ -455,7 +447,7 @@ function drawPopUp() {
 	var h = 0.18 * cvH;
 	drawRect("#333333", x, y, w, h, true);
 	drawRect("#810000", x + 10, y + 10, w - 20, h - 20, true);
-	var msg = new Label({x: 0.3, y: 0.46}, popupMessage, 20);
+	var msg = new Label(0.3, 0.46, popupMessage, 20);
 	scaleLabelsToWidth([msg], w - 30, 10);
 	msg.draw();
 	buttons["clear popup"].enable();
@@ -482,17 +474,18 @@ function drawTable() {
 
 function drawPlayers() {
 	var padRad = 0.04 * cvW;
-	var tableRad = labels["table_img"].dims().width / 2 + padRad * 1.25;
-	var tableX = labels["table_img"].position.x * cvW;
-	var tableY = labels["table_img"].position.y * cvH;
+	var tableRad = labels["table_img"].dims().width / 2;
+	var playerRad = tableRad + padRad * 1.25;
+	var tableX = labels["table_img"].x() + tableRad;
+	var tableY = labels["table_img"].y() + tableRad;
 	var angle = 180; 
 	var delta = 360 / (theTable.players.length - ([TABLE_LOBBY, TABLE_END].includes(gameState) ? 0 : 1));
 
 	for (var player of theTable.players) {
 		if (player.isDemon) continue;
 		var rad = Math.PI * angle / 180;
-		var x = tableX - Math.sin(rad) * tableRad;
-		var y = tableY + Math.cos(rad) * tableRad;
+		var x = tableX - Math.sin(rad) * playerRad;
+		var y = tableY + Math.cos(rad) * playerRad;
 		drawPlayerPad(player, x, y, padRad);
 		angle = (angle + delta) % 360;
 	}
@@ -506,9 +499,9 @@ function drawPlayerPad(player, x, y, r) {
 	drawCircle(player.color, x, y, r);
 
 	// Move player avatar/button to position.
-	buttons[player.name].position = {x: x - r * 0.25, y: y - r * 0.18};
+	buttons[player.name].setPosition(x - r * 0.25,  y - r * 0.18);
 	buttons[player.name].width = r * 1.6 / cvW;
-	buttons[player.name].img = PLAYER_IMAGES[player.avatarId];
+	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
 	buttons[player.name].enabled = thePlayer.isDemon || gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name;
 	buttons[player.name].visible = true;
@@ -517,9 +510,7 @@ function drawPlayerPad(player, x, y, r) {
 
 	// Draw name
 	drawImage(NAMEPLATE_IMAGE, x, y + r * 0.7, r * 2 / cvW, false, true, true);
-	var name = new Label({x: x, y: y + r * 0.85}, player.name, 15, false, false, "black");
-	scaleLabelsToWidth([name], r * 2, 5);
-	name.draw(true);
+	drawText(player.name, x, y + r * 0.85, 15, undefined, true, r * 2, 5, "black");
 
 	// Draw player's move
 	if (player.move) { 
@@ -535,13 +526,14 @@ function drawPlayerPad(player, x, y, r) {
 
 ///// Drawing utilities \\\\\\\
 
-function drawText(text, x, y, size, align) {
-	var l = new Label({x: x, y: y}, text, size, align);
+function drawText(text, x, y, size, align, absolute, scaleWidth, margin, color) {
+	var l = new Label(x, y, text, size).setAbsolute(absolute).setColor(color).setAlign(align);
+	scaleLabelsToWidth([l], scaleWidth, margin);
 	l.draw();
 }
 
 function drawImage(image, x, y, w, h, center, absolute) {
-	var l = new ImageLabel({x: x, y: y}, w, h, image, center, absolute);
+	var l = new ImageLabel({x: x, y: y}, w, h, image).setCenter(center).setAbsolute(absolute);
 	l.draw();
 }
 

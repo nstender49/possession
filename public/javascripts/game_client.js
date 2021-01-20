@@ -71,8 +71,10 @@ var newTableSettings = {
 	maxPlayers: 12, 
 	// Time limits
 	roundTime: 300,
-	secondTime: 5,
-	voteTime: 10,
+	secondTime: 10,
+	selectTime: 15,
+	voteTime: 30,
+	interfereTime: 10,
 };
 
 // Game settings
@@ -152,7 +154,7 @@ socket.on("possessed players", function(players) {
 
 socket.on("update interfere", function(uses) {
 	interfereUses = uses;
-	labels["interfere uses"].text = `Interfere uses: ${uses}`;
+	labels["interfere uses"].setData(uses);
 });
 
 // Server calls on connection to provide settings from server.
@@ -176,9 +178,9 @@ socket.on("disconnect", function() {
 function initLabels() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	// Main menu
-	labels["title"] = new Label({x: 0.5, y: 0.4}, "POSSESSION", 80);
-	buttons["make table"] = new Button({x: 0.5, y: 0.6}, "Make Table", 80, makeTable);
-	buttons["join table"] = new Button({x: 0.5, y: 0.85}, " Join Table ", 80, joinTable);
+	labels["title"] = new Label(0.5, 0.4, "POSSESSION", 80);
+	buttons["make table"] = new Button(0.5, 0.6, "Make Table", 80, makeTable);
+	buttons["join table"] = new Button(0.5, 0.85, " Join Table ", 80, joinTable);
 	drawGroups["main menu"] = new DrawGroup([
 		labels["title"],
 		buttons["make table"],
@@ -186,34 +188,34 @@ function initLabels() {
 	]);
 
 	// Table
-	labels["table_img"] = new ImageLabel({x: 0.3, y: 0.5}, 0.4, false, TABLE_IMAGE, true, false);
-	labels["message"] = new Label({x: 0.3, y: 0.5}, "", 20);
-	buttons["leave table"] = new Button({x: 0.3, y: 0.6}, "Leave", 30, leaveTable);
-	buttons["begin game"] = new Button({x: 0.3, y: 0.4}, "Begin", 30, doMove.bind(null, BEGIN));
-	buttons["change avatar"] = new Button({x: 0.3, y: 0.7}, "Change Avatar", 20, enableOverlay.bind(null, OVERLAY_AVATAR));
-	buttons["finish game"] = new Button({x: 0.3, y: 0.4}, "Finish", 30, doMove.bind(null, FINISH));
+	labels["table_img"] = new ImageLabel({x: 0.3, y: 0.5}, 0.4, false, TABLE_IMAGE).setCenter(true);
+	labels["message"] = new Label(0.3, 0.5, "", 20);
+	buttons["leave table"] = new Button(0.3, 0.6, "Leave", 30, leaveTable);
+	buttons["begin game"] = new Button(0.3, 0.4, "Begin", 30, doMove.bind(null, BEGIN));
+	buttons["change avatar"] = new Button(0.3, 0.7, "Change Avatar", 20, enableOverlay.bind(null, OVERLAY_AVATAR));
+	buttons["finish game"] = new Button(0.3, 0.4, "Finish", 30, doMove.bind(null, FINISH));
 
 	// Timers
-	labels["timer title"] = new Label({x: 0.302, y: 0.79}, "Vote ", 20, "right");
+	labels["timer title"] = new Label(0.302, 0.79, "Time ", 20).setAlign("right");
 	labels["timer hourglass"] = new ImageLabel({x: 0.31, y: 0.755}, 0.015, false, HOURGLASS_IMAGE);
-	labels["timer"] = new Label({x: 0.35, y: 0.79}, "30", 20);
+	labels["timer"] = new Label(0.35, 0.79, "{}", 20);
 	drawGroups["timer"] = new DrawGroup([labels["timer title"], labels["timer hourglass"], labels["timer"]]);
-	labels["round timer title"] = new Label({x: 0.305, y: 0.235}, "Round ", 20, "right");
+	labels["round timer title"] = new Label(0.305, 0.235, "Round ", 20).setAlign("right");
 	labels["round timer hourglass"] = new ImageLabel({x: 0.31, y: 0.2}, 0.015, false, HOURGLASS_IMAGE);
-	labels["round timer"] = new Label({x: 0.365, y: 0.235}, "300", 20, "right");
+	labels["round timer"] = new Label(0.365, 0.235, "{}", 20).setAlign("right");
 	drawGroups["round timer"] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels["round timer"]]);
 	drawGroups["timers"] = new DrawGroup([drawGroups["timer"], drawGroups["round timer"]]);
 
 	// Items
 	buttons[WATER] = new ImageButton({x: 0.24, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[WATER], doMove.bind(null, WATER), false, false, "black");
-	labels["water_count"] = new Label({x: 0.18, y: 0.37}, "", 20);
+	labels["water_count"] = new Label(0.18, 0.37, "{} x", 20);
 	buttons[BOARD] = new ImageButton({x: 0.4, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[BOARD], doMove.bind(null, BOARD));
-	labels["board_count"] = new Label({x: 0.34, y: 0.37}, "", 20);
+	labels["board_count"] = new Label(0.34, 0.37, "{} x", 20);
 	buttons[ROD] = new ImageButton({x: 0.24, y: 0.65}, false, 0.18, true, false, ITEM_IMAGES[ROD], doMove.bind(null, ROD));
-	labels["rod_count"] = new Label({x: 0.18, y: 0.67}, "", 20);
+	labels["rod_count"] = new Label(0.18, 0.67,"{} x", 20);
 	buttons[EXORCISM] = new ImageButton({x: 0.4, y: 0.65}, false, 0.18, true, false, ITEM_IMAGES[EXORCISM], doMove.bind(null, EXORCISM));
-	labels["exorcism_count"] = new Label({x: 0.34, y: 0.67}, "", 20);
-	buttons[PASS] = new Button({x: 0.3, y: 0.55}, "Pass", 15, doMove.bind(null, PASS));
+	labels["exorcism_count"] = new Label(0.34, 0.67, "{} x", 20);
+	buttons[PASS] = new Button(0.3, 0.55, "Pass", 15, doMove.bind(null, PASS));
 	drawGroups["items"] = new DrawGroup([
 		buttons[WATER],
 		buttons[BOARD],
@@ -227,34 +229,34 @@ function initLabels() {
 	]);
 
 	// Voting phase
-	labels[WATER] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[WATER], true);
-	labels[BOARD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[BOARD], true);
-	labels[ROD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[ROD], true);
-	labels[EXORCISM] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[EXORCISM], true);
-	buttons["vote yes"] = new Button({x: 0.25, y: 0.6}, "Yes", 20, doVote.bind(null, true), undefined, true);
-	buttons["vote no"] = new Button({x: 0.35, y: 0.6}, "No", 20, doVote.bind(null, false), undefined, true);
+	labels[WATER] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[WATER]).setCenter(true);
+	labels[BOARD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[BOARD]).setCenter(true);
+	labels[ROD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[ROD]).setCenter(true);
+	labels[EXORCISM] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[EXORCISM]).setCenter(true);
+	buttons["vote yes"] = new Button(0.25, 0.6, "Yes", 20, doVote.bind(null, true)).setSticky(true);
+	buttons["vote no"] = new Button(0.35, 0.6, "No", 20, doVote.bind(null, false)).setSticky(true);
 	drawGroups["voting"] = new DrawGroup([
 		buttons["vote yes"],
 		buttons["vote no"],
 	]);
 
 	// Chat
-	buttons["submit chat"] = new Button({x: 0.935, y: 0.69}, "↵", 15, submitChat);
+	buttons["submit chat"] = new Button(0.935, 0.69, "↵", 15, submitChat);
 	
 	// Demon / interfere
-	labels["interfere uses"] = new Label({x: 0.53, y: 0.95}, "Interfere uses: 0", 15, true);
-	buttons["interfere yes"] = new Button({x: 0.25, y: 0.6}, "Yes", 20, doInterfere.bind(null, true));
-	buttons["interfere no"] = new Button({x: 0.35, y: 0.6}, "No", 20, doInterfere.bind(null, false));
+	labels["interfere uses"] = new Label(0.53, 0.95, "Interfere uses: {}", 15).setData(0);
+	buttons["interfere yes"] = new Button(0.25, 0.6, "Yes", 20, doInterfere.bind(null, true));
+	buttons["interfere no"] = new Button(0.35, 0.6, "No", 20, doInterfere.bind(null, false));
 	drawGroups["interfere"] = new DrawGroup([
 		buttons["interfere yes"],
 		buttons["interfere no"],
 	]);
 
 	// Game settings (bottom bar)
-	labels["table"] = new Label({x: 0.01, y: 0.99}, "", 15, "left");
-	labels["error msg"] = new Label({x: 0.5, y: 0.98}, "", 20);
+	labels["table"] = new Label(0.01, 0.99, "Table {}", 15).setAlign("left").setData("????");
+	labels["error msg"] = new Label(0.5, 0.98, "", 20);
 	// buttons["sound"] = new ImageButton({x: 0.91, y: 0.97}, 0.02, false, false, false, SOUND_ON_IMG, toggleSound.bind(null, true), SOUND_OFF_IMG, toggleSound.bind(null, false));
-	labels["version"] = new Label({x: 0.99, y: 0.99}, "", 15, "right", "monospace");
+	labels["version"] = new Label(0.99, 0.99, "", 15).setAlign("right").setFont("monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
 		labels["table"],
 		labels["error msg"],
@@ -263,17 +265,13 @@ function initLabels() {
 	]);
 
 	// Pop up
-	buttons["clear popup"] = new Button({x: 0.3, y: 0.53}, "OK", 20, clearOverlay);
-	buttons["clear popup"].isOverlay = true;
+	buttons["clear popup"] = new Button(0.3, 0.53, "OK", 20, clearOverlay).setOverlay();
 
 	// How to play
-	buttons["howto"] = new Button({x: 0.02, y: 0.93}, "How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO), false, false, false, "left");
-	buttons["clear howto"] = new Button({x: 0.5, y: 0.91}, "Ok", 20, clearOverlay);
-	buttons["clear howto"].isOverlay = true;
-	buttons["howto >"] = new Button({x: 0.9, y: 0.91}, ">", 20, pageHowTo.bind(null, 1));
-	buttons["howto >"].isOverlay = true;
-	buttons["howto <"] = new Button({x: 0.1, y: 0.91}, "<", 20, pageHowTo.bind(null, -1));
-	buttons["howto <"].isOverlay = true;
+	buttons["howto"] = new Button(0.02, 0.93, "How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO)).setAlign("left");
+	buttons["clear howto"] = new Button(0.5, 0.91, "Ok", 20, clearOverlay).setOverlay();
+	buttons["howto >"] = new Button(0.9, 0.91, ">", 20, pageHowTo.bind(null, 1)).setOverlay();
+	buttons["howto <"] = new Button(0.1, 0.91, "<", 20, pageHowTo.bind(null, -1)).setOverlay();
 	drawGroups["howto"] = new DrawGroup([
 		buttons["clear howto"],
 		buttons["howto >"],
@@ -281,17 +279,14 @@ function initLabels() {
 	]);
 
 	// Avatar selection
-	buttons["clear avatar"] = new Button({x: 0.955, y: 0.9}, "✓", 40, clearOverlay);
-	buttons["clear avatar"].isOverlay = true;
+	buttons["clear avatar"] = new Button(0.955, 0.9, "✓", 40, clearOverlay).setOverlay();
 	drawGroups["avatar selection"] = new DrawGroup([]);
 	for (var i = 0; i < AVATAR_COUNT; i++) {
-		buttons[`avatar ${i}`] = new ImageButton({x: 0, y: 0}, 0, false, false, true, PLAYER_IMAGES[i], changeAvatar.bind(null, i));
-		buttons[`avatar ${i}`].isOverlay = true;
+		buttons[`avatar ${i}`] = new ImageButton({x: 0, y: 0}, 0, false, false, true, PLAYER_IMAGES[i], changeAvatar.bind(null, i)).setOverlay();
 		drawGroups["avatar selection"].draws.push(buttons[`avatar ${i}`]);
 	}
 	for (var color of PLAYER_COLORS) {
-		buttons[`color ${color}`] = new ShapeButton({x: 0, y: 0}, 0, 0, false, true, color, changeColor.bind(null, color));
-		buttons[`color ${color}`].isOverlay = true;
+		buttons[`color ${color}`] = new ShapeButton({x: 0, y: 0}, 0, 0, false, true, color, changeColor.bind(null, color)).setOverlay();
 		drawGroups["avatar selection"].draws.push(buttons[`color ${color}`]);
 	}
 
@@ -349,9 +344,8 @@ function setTimer(sec, timer) {
 	if (sec === 0) {
 		drawGroups[timer].disable();
 	} else {
-		console.log(`#### SET TIMER: ${sec} ${timer}`);
 		drawGroups[timer].show();
-		labels[timer].text = sec;
+		labels[timer].setData(sec);
 		timers[timer] = Number(setTimeout(setTimer.bind(null, sec - 1, timer), 1000));
 	}
 }
@@ -488,7 +482,7 @@ function setChatHeight() {
 			if (config.name === "chat-input") {
 				config.y = 0.3;
 			}
-			buttons["submit chat"].position.y = 0.3325;
+			buttons["submit chat"].yy = 0.3325;
 		}
 	} else {
 		for (var config of ELEM_CONFIGS) {
@@ -502,7 +496,7 @@ function setChatHeight() {
 			if (config.name === "chat-input") {
 				config.y = 0.65;
 			}
-			buttons["submit chat"].position.y = 0.6825;
+			buttons["submit chat"].yy = 0.6825;
 		}
 	}
 	handleResize();
@@ -563,7 +557,7 @@ function makeTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (socket.connected) {
 		var name = document.getElementById("player-name").value;
-		var avatarId = Cookies("avatarId");
+		var avatarId = parseInt(Cookies("avatarId"));
 		var color = Cookies("color");
 		// TODO: make settings and send them here.
 		if (name) {
@@ -581,7 +575,7 @@ function joinTable() {
 	if (socket.connected) {
 		var name = document.getElementById("player-name").value;
 		var code = document.getElementById("game-code").value;
-		var avatarId = Cookies("avatarId");
+		var avatarId = parseInt(Cookies("avatarId"));
 		var color = Cookies("color");
 		if (name && code) {
 			socket.emit("join table", code, name, avatarId, color);
@@ -618,14 +612,15 @@ function updateTable(table) {
 			setChatHeight();
 		}
 		labels["message"].text = (thePlayer.isDemon && table.demonMessage) ? table.demonMessage : table.message;
-		labels["table"].text = `Table ${table.code}`;
-		labels["water_count"].text = `${theTable.resources.WATER} x`;
-		labels["board_count"].text = `${theTable.resources.BOARD} x`;
-		labels["rod_count"].text = `${theTable.resources.ROD} x`;
-		labels["exorcism_count"].text = `${theTable.resources.EXORCISM} x`;
+		labels["table"].setData(table.code);
+		labels["water_count"].setData(theTable.resources.WATER);
+		labels["board_count"].setData(theTable.resources.BOARD);
+		labels["rod_count"].setData(theTable.resources.ROD);
+		labels["exorcism_count"].setData(theTable.resources.EXORCISM);
 	} else {
 		theTable = false;
 		changeState(MAIN_MENU);
+		labels["table"].setData("????");
 	}
 }
 

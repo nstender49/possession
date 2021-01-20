@@ -10,162 +10,107 @@ class PreLoadedImage {
 	}
 }
 
-class Label {
-	constructor(position, text, size, align, font, fill) {
-		this.position = position;
-		this.text = text;
-		this.data = "";
-		this.size = size;
-		this.font = font ? font : LABEL_FONT;
-		this.align = align ? align : "center";
+class Element {
+	constructor(x, y) {
+		this.xx = x;
+		this.yy = y;
+
+		this.absolute = false;
+		this.center = false;
+
 		this.visible = true;
 		this.opacity = 1;
-		this.fill = fill ? fill : "white";
-		this.maxSize = size;
+
+		this.enabled = false;
+		this.down = false;
+		this.focus = false;
+		this.clicked = false;
+
+		this.sticky = false;
+		this.isOverlay = false;
 	}
 
-	msg() {
-		return this.text + this.data;
+	setPosition(x, y) {
+		this.xx = x;
+		this.yy = y;
+	}
+
+	setAbsolute(val) {
+		if (val !== undefined) this.absolute = val;
+		return this;
+	}
+
+	setCenter(val) {
+		if (val !== undefined) this.center = val;
+		return this;
+	}
+
+	x() {
+		var x = this.xx;
+		if (!this.absolute) x *= cvW;
+		if (this.center) x -= this.dims().width / 2;
+		return x;
+	}
+
+	y() {
+		var y = this.yy;
+		if (!this.absolute) y *= cvH;
+		if (this.center) y -= this.dims().height / 2;
+		return y;
 	}
 
 	enable() {
 		this.visible = true;
+		this.enabled = true;
+		this.clicked = false;
 	}
-	
+
 	disable() {
 		this.visible = false;
+		this.enabled = false;
 	}
 
 	show() {
 		this.visible = true;
-	}
-
-	dims() {
-		ctx.font = (this.size * r) + "px " + this.font;
-		var metrics = ctx.measureText(this.msg())
-		return {
-			width: metrics.width,
-			height: metrics.actualBoundingBoxAscent,
-		}
-	}
-
-	draw(absolute = false) {
-		if (!this.visible) { return; }
-		if (this.opacity < 1) {
-			ctx.save();
-			ctx.globalAlpha = this.opacity;
-		}
-
-		ctx.fillStyle = this.fill;
-		ctx.font = (this.size * r) + "px " + this.font;
-	
-		ctx.textBaseline = "center";
-		ctx.textAlign = this.align;
-		if (absolute) {
-			ctx.fillText(this.msg(), this.position.x, this.position.y);
-		} else {
-			console.log(`DRAWING ${this.msg()} at ${this.position.x * cvW} ${this.position.y * cvH}`);
-			ctx.fillText(this.msg(), cvW * this.position.x, cvH * this.position.y);
-		}
-		if (this.opacity < 1) {
-			ctx.restore();
-		}
 	}
 }
 
-class Button {
-	constructor(position, text, size, callback, uncallback, sticky, holdable, align, border, margin, font) {
-		this.position = position;
+class TextElement extends Element {
+	constructor(x, y, text, size) {
+		super(x, y);
+
 		this.text = text;
+		this.data = "{}";
+
 		this.size = size;
-		this.font = font ? font : LABEL_FONT;
-		this.align = align ? align : "center";
-		this.callback = callback;
-		this.uncallback = uncallback;
-		this.down = false;
-		this.enabled = false;
-		this.visible = true;
-		this.focus = false;
-		this.clicked = false;
-		this.undoEnabled = true;
-		this.margin = margin || 20;
-		this.border = border === undefined ? true : border;
-		this.holdable = holdable;
-		this.holdTicks = 0;
-		this.sticky = sticky;
-		this.isOverlay = false;
+		this.maxSize = size;
+
+		this.font = LABEL_FONT;
+		this.color = "white";
+		this.align = "center";
 	}
 
-	checkHold() {
-		if (!this.holdable || !this.isEnabled() || !this.down) {
-			return;
-		}
-		if (isOnButton(this)) {
-			this.holdTicks += 1;
-			if (this.holdTicks === 15) {
-				this.click();
-				this.holdTicks = 0;
-			} 
-		}
+	setAlign(val) {
+		if (val) this.align = val;
+		return this;
 	}
 
-	isEnabled() {
-		return this.enabled && (!overlay || this.isOverlay);
+	setFont(val) {
+		if (val) this.font = val;
+		return this;
 	}
 
-	toggle() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (this.clicked) {
-			this.unclick();
-		} else {
-			this.click();
-		}
+	setColor(val) {
+		if (val) this.color = val;
+		return this;
 	}
 
-	click() {
-		if (!this.isEnabled()) {
-			return;
+	setData(val) {
+		if (val) {
+			this.text = this.text.replace(this.data, val);
+			this.data = val;
 		}
-		if (!this.clicked) {
-			if (this.uncallback || this.sticky) {
-				this.clicked = true;
-			}
-			this.callback();
-		}
-	}
-
-	unclick() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (this.clicked && this.uncallback && this.undoEnabled) {
-			this.clicked = false;
-			this.uncallback();
-		}
-	}
-
-	enable(preserveClick) {
-		this.visible = true;
-		this.enabled = true;
-		if (!preserveClick) {
-			this.clicked = false;
-		}
-		this.undoEnabled = true;
-	}
-
-	disable() {
-		this.visible = false;
-		this.enabled = false;
-	}
-
-	show() {
-		this.visible = true;
-	}
-
-	disableUndo() {
-		this.undoEnabled = false;
+		return this;
 	}
 
 	dims() {
@@ -182,13 +127,13 @@ class Button {
 		var margin = this.margin * r;
 	
 		// Top left corner.
-		var minX = cvW * this.position.x - margin * 0.5;
+		var minX = this.x() - margin * 0.5;
 		if (this.align === "center") {
 			minX -= dims.width / 2;
 		} else if (this.align === "right") {
 			minX -= dims.width;
 		}
-		var minY = cvH * this.position.y - dims.height - margin * 0.5;
+		var minY = this.y() - dims.height - margin * 0.5;
 		var maxX = minX + dims.width + margin;
 		var maxY = minY + dims.height + margin;
 		
@@ -201,8 +146,108 @@ class Button {
 			height: dims.height + margin,
 		}
 	}
+}
 
-	draw(absolute = false) {
+class Label extends TextElement {
+	constructor(x, y, text, size) {
+		super(x, y, text, size);
+	}
+
+	draw() {
+		if (!this.visible) { return; }
+		if (this.opacity < 1) {
+			ctx.save();
+			ctx.globalAlpha = this.opacity;
+		}
+
+		ctx.fillStyle = this.color;
+		ctx.font = (this.size * r) + "px " + this.font;	
+		ctx.textBaseline = "center";
+		ctx.textAlign = this.align;
+
+		ctx.fillText(this.text, this.x(), this.y());
+
+		if (this.opacity < 1) ctx.restore();
+	}
+}
+
+let ButtonMixin = (superclass) => class extends superclass {
+	setOverlay() {
+		this.isOverlay = true;
+		return this;
+	}
+
+	setSticky(val) {
+		if (val !== undefined) this.sticky = val;
+		return this;
+	}
+
+	isEnabled() {
+		return this.enabled && (!overlay || this.isOverlay);
+	}
+
+	under(x, y) {
+		if (!this.isEnabled()) return false;
+		var bDims = this.buttonDims();
+		return x >= bDims.left && x <= bDims.right && y <= bDims.bot && y >= bDims.top;
+	}
+	
+	checkHold(x, y) {
+		if (!(this.holdable && this.down && this.isEnabled())) return
+
+		if (this.under(x, y)) {
+			this.holdTicks += 1;
+			if (this.holdTicks === 15) {
+				this.click();
+				this.holdTicks = 0;
+			} 
+		}
+	}
+
+	toggle() {
+		if (!this.isEnabled()) return;
+
+		if (this.clicked) {
+			this.unclick();
+		} else {
+			this.click();
+		}
+	}
+
+	click() {
+		if (!this.isEnabled()) return;
+
+		if (!this.clicked) {
+			if (this.uncallback || this.sticky) this.clicked = true;
+			this.callback();
+		}
+	}
+
+	unclick() {
+		if (!this.isEnabled()) return;
+
+		if (this.clicked && this.uncallback) {
+			this.clicked = false;
+			this.uncallback();
+		}
+	}
+};
+
+class Button extends ButtonMixin(TextElement) {
+	constructor(x, y, text, size, callback, uncallback, sticky, holdable, border, margin) {
+		super(x, y, text, size);
+
+		this.callback = callback;
+		this.uncallback = uncallback;
+		
+
+		this.margin = margin || 20;
+		this.border = border === undefined ? true : border;
+		this.holdable = holdable;
+		this.holdTicks = 0;
+	}
+
+	draw() {
 		if (!this.visible) { return; }
 
 		if (this.focus || this.clicked) {
@@ -226,50 +271,16 @@ class Button {
 
 		ctx.textBaseline = "center";
 		ctx.textAlign = this.align;
-		if (absolute) {
-			ctx.fillText(this.msg(), this.position.x, this.position.y);
-		} else {
-			ctx.fillText(this.text, cvW * this.position.x, cvH * this.position.y);
-		}
+
+		ctx.fillText(this.text, this.x(), this.y());
 	}
 }
 
-class ImageLabel {
-	constructor(position, width, height, img, center, absolute) {
-		this.position = position;
-		this.width = width;
-		this.height = height;
-		this.center = center;
-		this.absolute = absolute;
-		this.visible = true;
-		// Load image
-		this.img = img;
-	}
-
-	enable() {
-		this.visible = true;
-	}
-	
-	disable() {
-		this.visible = false;
-	}
-
-	show() {
-		this.visible = true;
-	}
-
-	pos() {
-		var pos = {x: this.position.x, y: this.position.y};
-		if (!this.absolute) {
-			pos.x *= cvW;
-			pos.y *= cvH;
-		}
-		if (this.center) {
-			var dims = this.dims();
-			pos.x -= dims.width / 2;
-			pos.y -= dims.height / 2;
-		}
-		return pos;
+class ImageElement extends Element {
+	constructor(x, y, w, h) {
+		super(x, y);
+		this.width = w;
+		this.height = h;
 	}
 
 	dims() {
@@ -285,11 +296,10 @@ class ImageLabel {
 	}
 
 	buttonDims() {
-		var pos = this.pos();
 		var dims = this.dims();
 	
-		var minX = cvW * pos.x;
-		var minY = cvH * pos.y;
+		var minX = this.x();
+		var minY = this.y();
 		var maxX = minX + dims.width;
 		var maxY = minY + dims.height;
 
@@ -301,361 +311,71 @@ class ImageLabel {
 			width: dims.width,
 			height: dims.height,
 		}
+	}
+}
+
+class ImageLabel extends ImageElement {
+	constructor(position, width, height, img) {
+		super(position.x, position.y, width, height);
+		this.img = img;
 	}
 
 	draw() {
 		if (!this.visible) return;
 
-		var pos = this.pos();
 		var dims = this.dims();
-
-		var x = pos.x;
-		var y = pos.y;
-
-		// console.log(`DRAWING ${this.img.img.src} ${x} ${y} ${dims.width} ${dims.height}`);
-		ctx.drawImage(this.img.img, x, y, dims.width, dims.height);
+	
+		ctx.drawImage(this.img.img, this.x(), this.y(), dims.width, dims.height);
 	}
 }
 
-class ImageButton {
+class ImageButton extends ButtonMixin(ImageElement) {
 	constructor(position, width, height, center, absolute, on_img, callback, off_img, uncallback) {
-		this.position = position;
-		this.width = width;
-		this.height = height;
+		super(position.x, position.y, width, height);
+
 		this.center = center
 		this.absolute = absolute;
+
 		this.callback = callback;
 		this.uncallback = uncallback;
-		this.clicked = false;
-		this.sticky = false;
-		this.enabled = true;
-		this.visible = true;
-		this.on = false;
-		this.isOverlay = false;
+
 		// On image
 		this.on_img = on_img;
-		if (uncallback) {
-			this.off_img = off_img;
-		}
-
-		this.img = this.uncallback && !this.on ? this.off_img : this.on_img;
-	}
-
-	checkHold() {}
-
-	isEnabled() {
-		return this.enabled && (!overlay || this.isOverlay);
-	}
-
-	toggle() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (this.uncallback && this.on) {
-			this.uncallback();
-		} else {
-			this.callback();
-		}
-		this.on = !this.on;
-		this.img = this.uncallback && !this.on ? this.off_img : this.on_img;
-	}
-
-	click() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (!this.clicked) {
-			if (this.uncallback || this.sticky) {
-				this.clicked = true;
-			}
-			this.callback();
-		}
-	}
-
-	unclick() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (this.clicked && this.uncallback && this.undoEnabled) {
-			this.clicked = false;
-			this.uncallback();
-		}
-	}
-
-	enable() {
-		this.visible = true;
-		this.enabled = true;
-	}
-
-	disable() {
-		this.visible = false;
-		this.enabled = false;
-	}
-
-	show() {
-		this.visible = true;
-	}
-	
-	pos() {
-		var pos = {x: this.position.x, y: this.position.y};
-		if (!this.absolute) {
-			pos.x *= cvW;
-			pos.y *= cvH;
-		}
-		if (this.center) {
-			var dims = this.dims();
-			pos.x -= dims.width / 2;
-			pos.y -= dims.height / 2;
-		}
-		return pos;
-	}
-
-	dims() {
-		var h, w;
-		if (this.height) {
-			h = cvH * this.height;
-			w = this.width ? cvW * this.width : h * this.img.ratio;
-		} else {
-			w = cvW * this.width;
-			h = this.height ? cvH * this.height : w / this.img.ratio;
-		}
-		return {width: w, height: h};
-	}
-
-	buttonDims() {
-		var pos = this.pos();
-		var dims = this.dims();
-	
-		var minX = pos.x;
-		var minY = pos.y;
-		var maxX = minX + dims.width;
-		var maxY = minY + dims.height;
-	
-		return {
-			left: minX,
-			right: maxX,
-			top: minY,
-			bot: maxY,
-			width: dims.width,
-			height: dims.height,
-		}
+		this.img = on_img;
+		if (uncallback) this.off_img = off_img;
 	}
 
 	draw() {
 		if (!this.visible) { return; }
 
-		var pos = this.pos();
 		var dims = this.dims();
 
-		var x = pos.x;
-		var y = pos.y;
-
-		ctx.drawImage(this.img.img, x, y, dims.width, dims.height);
+		var img = this.uncallback && this.clicked ? this.off_img : this.on_img;
+		ctx.drawImage(img.img, this.x(), this.y(), dims.width, dims.height);
 	}
 }
 
-class ShapeButton {
+class ShapeButton extends ButtonMixin(ImageElement) {
 	constructor(position, width, height, center, absolute, color, callback) {
-		this.position = position;
-		this.width = width;
-		this.height = height;
+		super(position.x, position.y, width, height);
+
 		this.center = center
 		this.absolute = absolute;
 		this.callback = callback;
-		this.clicked = false;
-		this.sticky = false;
-		this.enabled = true;
-		this.visible = true;
-		this.on = false;
-		this.isOverlay = false;
 		this.color = color;
-	}
-
-	checkHold() {}
-
-	isEnabled() {
-		return this.enabled && (!overlay || this.isOverlay);
-	}
-
-	toggle() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (this.uncallback && this.on) {
-			this.uncallback();
-		} else {
-			this.callback();
-		}
-		this.on = !this.on;
-		this.img = this.uncallback && !this.on ? this.off_img : this.on_img;
-	}
-
-	click() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (!this.clicked) {
-			if (this.uncallback || this.sticky) {
-				this.clicked = true;
-			}
-			this.callback();
-		}
-	}
-
-	unclick() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		if (this.clicked && this.uncallback && this.undoEnabled) {
-			this.clicked = false;
-			this.uncallback();
-		}
-	}
-
-	enable() {
-		this.visible = true;
-		this.enabled = true;
-	}
-
-	disable() {
-		this.visible = false;
-		this.enabled = false;
-	}
-
-	show() {
-		this.visible = true;
-	}
-	
-	pos() {
-		var pos = {x: this.position.x, y: this.position.y};
-		if (!this.absolute) {
-			pos.x *= cvW;
-			pos.y *= cvH;
-		}
-		if (this.center) {
-			var dims = this.dims();
-			pos.x -= dims.width / 2;
-			pos.y -= dims.height / 2;
-		}
-		return pos;
 	}
 
 	dims() {
 		return {width: this.width * cvW, height: this.height * cvH};
 	}
 
-	buttonDims() {
-		var pos = this.pos();
-		var dims = this.dims();
-	
-		var minX = pos.x;
-		var minY = pos.y;
-		var maxX = minX + dims.width;
-		var maxY = minY + dims.height;
-	
-		return {
-			left: minX,
-			right: maxX,
-			top: minY,
-			bot: maxY,
-			width: dims.width,
-			height: dims.height,
-		}
-	}
-
 	draw() {
 		if (!this.visible) { return; }
 
-		var pos = this.pos();
 		var dims = this.dims();
 
 		ctx.fillStyle = this.color;
-		ctx.fillRect(pos.x, pos.y, dims.width, dims.height);
-	}
-}
-
-class Checkbox {
-	constructor(position, size, callback) {
-		this.position = position;
-		this.size = size;
-		this.callback = callback;
-		this.down = false;
-		this.enabled = false;
-		this.visible = true;
-		this.clicked = false;
-		this.isOverlay = false;
-	}
-
-	checkHold() {}
-
-	isEnabled() {
-		return this.enabled && (!overlay || this.isOverlay);
-	}
-
-	toggle() {
-		if (!this.isEnabled()) {
-			return;
-		}
-		this.clicked = !this.clicked;
-		if (this.callback) {
-			this.callback();
-		}
-	}
-
-	enable() {
-		this.enabled = true;
-	}
-
-	disable() {
-		this.enabled = false;
-	}
-
-	dims() {
-		return {
-			width: cvW * this.size,
-			height: cvW * this.size,
-		}
-	}
-
-	buttonDims() {
-		var dims = this.dims();
-	
-		// Top left corner.
-		var minX = cvW * this.position.x - dims.width * 0.5;
-		var minY = cvH * this.position.y - dims.height * 0.5;
-		var maxX = minX + dims.width;
-		var maxY = minY + dims.height;
-		
-		return {
-			left: minX,
-			right: maxX,
-			top: minY,
-			bot: maxY,
-			width: dims.width,
-			height: dims.height,
-		}
-	}
-
-	draw() {
-		if (!this.visible) { return; }
-
-		if (this.isEnabled()) {
-			ctx.strokeStyle = "black";
-			ctx.fillStyle = "black";
-		} else {
-			ctx.strokeStyle = "gray";
-			ctx.fillStyle = "gray";
-		}
-	
-		var buttonDims = this.buttonDims();
-		ctx.lineWidth = 1 * r;
-		ctx.lineJoin = "round";
-		
-		if (this.clicked) {
-			ctx.fillRect(buttonDims.left, buttonDims.top, buttonDims.width, buttonDims.height);
-		} else {
-			ctx.strokeRect(buttonDims.left, buttonDims.top, buttonDims.width, buttonDims.height);
-		}
+		ctx.fillRect(this.x(), this.y(), dims.width, dims.height);
 	}
 }
 
