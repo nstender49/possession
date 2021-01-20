@@ -4,7 +4,13 @@
 var express = require("express");
 var session = require("express-session");
 var app = express();
-app.use(session({secret: "cookie secret"}));
+app.use(session({
+	secret: "cookie secret",
+	cookie: {
+		sameSite: true,
+		// secure: true,  NOTE: enable this once https is enabled, need hobby level heroku
+	},
+}));
 
 var server = require("http").Server(app);
 var io = require("./libs/game_manager").listen(server);  // Start Socket.io server and let game_manager handle those connections

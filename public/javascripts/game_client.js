@@ -361,7 +361,6 @@ function changeState(state) {
 		button.disable();
 	}
 
-	// buttons["sound"].enable();
 	buttons["howto"].enable();
 
 	enableInputs();
@@ -385,7 +384,7 @@ function changeState(state) {
 			buttons["change avatar"].enable();
 			break;
 		case TABLE_NIGHT:
-			overlay = undefined;
+			if (overlay !== OVERLAY_POPUP) overlay = undefined;
 			break;
 		case TABLE_DAY:
 			if (thePlayer.isDemon) {

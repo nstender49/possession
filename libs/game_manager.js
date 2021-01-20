@@ -85,7 +85,7 @@ module.exports.listen = function(app) {
 			socket.emit("server error", "No cookie!");
 			return false;
 		}
-		console.log(process.env.npm_package_version);
+
 		socket.emit("init settings", {
 			DEBUG: DEBUG,
 			code_version: process.env.npm_package_version,
@@ -98,8 +98,7 @@ module.exports.listen = function(app) {
 		});
 
 		socket.on("make table", function(name, avatarId, color, settings) {
-			var code = createTable(settings);
-			joinTable(socket, code, name, avatarId, color);
+			joinTable(socket, createTable(settings), name, avatarId, color);
 		});
 
 		socket.on("join table", function(code, name, avatarId, color) {
@@ -123,24 +122,11 @@ module.exports.listen = function(app) {
 		});
 
 		socket.on("change avatar", function(avatarId) {
-			if (avatarId < 0 || avatarId >= AVATAR_COUNT) return;
-			var table = getTableBySocketId(socket.id);
-			var player = getPlayerBySocketId(socket.id);
-			var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
-			tablePlayer.avatarId = avatarId;
-			updateTable(table);
+			updateAvatar(socket, avatarId);
 		});
 
 		socket.on("change color", function(color) {
-			if (!PLAYER_COLORS.includes(color)) return;
-			var table = getTableBySocketId(socket.id);
-			if (table.playerColors.includes(color)) return;
-			var player = getPlayerBySocketId(socket.id);
-			var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
-			table.playerColors.push(color);
-			removeByValue(table.playerColors, tablePlayer.color);
-			tablePlayer.color = color;
-			updateTable(table);
+			updateColor(socket, color);
 		});
 	});
 	return io;
@@ -186,18 +172,6 @@ function createTableCode() {
 		}
 	} while (getTableByCode(code));
 	return code;
-}
-
-function updateSettings(socket, settings) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var table = getTableBySocketId(socket.id);
-	if (!table) { return false; }
-	if (isTableOwner(socket.id, table)) {
-		table.settings = settings;
-		updateTable(table);
-	} else {
-		socket.emit("server error", "Only owner can modify table settings!");
-	}
 }
 
 function joinTable(socket, code, name, avatarId, color) {
@@ -305,7 +279,48 @@ function deleteTable(table) {
 	removeByValue(tables, table);
 }
 
+function updateSettings(socket, settings) {
+	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
+	var table = getTableBySocketId(socket.id);
+	if (!table) { return false; }
+	if (isTableOwner(socket.id, table)) {
+		table.settings = settings;
+		updateTable(table);
+	} else {
+		socket.emit("server error", "Only owner can modify table settings!");
+	}
+}
+
+function updateAvatar(socket, avatarId) {
+	if (avatarId < 0 || avatarId >= AVATAR_COUNT) return;
+	var table = getTableBySocketId(socket.id);
+	var player = getPlayerBySocketId(socket.id);
+	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+	tablePlayer.avatarId = avatarId;
+	updateTable(table);
+}
+
+function updateColor(socket, color) {
+	if (!PLAYER_COLORS.includes(color)) return;
+	var table = getTableBySocketId(socket.id);
+	if (table.playerColors.includes(color)) return;
+	var player = getPlayerBySocketId(socket.id);
+	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+	table.playerColors.push(color);
+	removeByValue(table.playerColors, tablePlayer.color);
+	tablePlayer.color = color;
+	updateTable(table);
+}
+
 ///// Comms \\\\\
+
+function updateTable(table) {
+	for (var tablePlayer of table.players) {
+		if (!tablePlayer.active) continue;
+		var player = getPlayerBySessionId(tablePlayer.sessionId);
+		if (player) player.socket.emit("update table", table);
+	}
+}
 
 function sendMessage(socket, msg, targetName) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
@@ -322,31 +337,12 @@ function sendMessage(socket, msg, targetName) {
 	}
 }
 
-function updateTable(table) {
-	for (var tablePlayer of table.players) {
-		if (!tablePlayer.active) continue;
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
-		if (player) player.socket.emit("update table", table);
-	}
-}
-
 function broadcastMessage(table, msg, sender) {
 	for (var tablePlayer of table.players) {
 		var player = getPlayerBySessionId(tablePlayer.sessionId);
 		if (player) player.socket.emit("chat msg", msg, sender);
 	}
 	chatLogs[table.code][GENERAL].push({msg: msg, sender: sender})
-}
-
-function setTimer(player, sec, isRound) {
-	player.socket.emit("set timer", sec, isRound ? "round timer" : "timer");
-}
-
-function setTableTimer(table, sec, isRound) {
-	for (var tablePlayer of table.players) {
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
-		if (player) setTimer(player, sec, isRound);
-	}
 }
 
 function sendDemonMessage(table, msg, targetName, demonName) {
@@ -372,6 +368,27 @@ function clearChats(table) {
 			player.socket.emit("clear chat", "demon-chat");
 		}
 	}
+}
+
+function setTimer(player, sec, isRound) {
+	player.socket.emit("set timer", sec, isRound ? "round timer" : "timer");
+}
+
+function setTableTimer(table, sec, isRound) {
+	for (var tablePlayer of table.players) {
+		var player = getPlayerBySessionId(tablePlayer.sessionId);
+		if (player) setTimer(player, sec, isRound);
+	}
+}
+
+function clearTimer(table) {
+	if (table.timerId) clearTimeout(table.timerId);
+	setTableTimer(table, 0);
+}
+
+function clearRoundTimer(table) {
+	if (table.roundTimerId) clearTimeout(table.roundTimerId);
+	setTableTimer(table, 0, true);
 }
 
 function emitErrorToTable(table, error) {
@@ -708,16 +725,6 @@ function advanceRound(table) {
 	updateTable(table);	
 }
 
-function clearTimer(table) {
-	if (table.timerId) clearTimeout(table.timerId);
-	setTableTimer(table, 0);
-}
-
-function clearRoundTimer(table) {
-	if (table.roundTimerId) clearTimeout(table.roundTimerId);
-	setTableTimer(table, 0, true);
-}
-
 function autoAdvanceRound(table, delay) {
 	table.timerId = Number(setTimeout(advanceRound.bind(null, table), 1000 * delay));
 }
@@ -822,8 +829,8 @@ function handleNewGame(table) {
 	demon.isDemon = true;
 	chatLogs[table.code][demon.name] = [];
 	table.demonId = demon.sessionId;
-	sendDemonMessage(table, "You are the demon!", false, demon.name);
 	var demonPlayer = getPlayerBySessionId(table.demonId);
+	demonPlayer.socket.emit("pop up", "You are the demon!");
 	demonPlayer.socket.emit("update interfere", game.interfereUses);
 	// Reset resources
 	table.resources = {
@@ -951,12 +958,10 @@ function handleNewConnection(socket, sessionId) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 
 	console.log("NEW CONNECTION");
-	console.log(socket.request.headers.cookie);
-	console.log(cookie.parse(socket.request.headers.cookie));
 	console.log(cookie.parse(socket.request.headers.cookie)["connect.sid"]);
 
 	var sessionId = DEBUG ? socket.id : cookie.parse(socket.request.headers.cookie)["connect.sid"];
-	console.log("SESSION ID: " + sessionId); 
+	//console.log("SESSION ID: " + sessionId); 
 	var player = getPlayerBySessionId(sessionId);
 	if (player) {
 		socket.emit("server error", "Session for player already exists, you cheater!");
@@ -966,21 +971,21 @@ function handleNewConnection(socket, sessionId) {
 	player = getInactiveBySessionId(sessionId);
 	if (player) {
 		players.push(player);
-		console.log("FOUND INACTIVE PLAYER! " + sessionId);
+		//console.log("FOUND INACTIVE PLAYER! " + sessionId);
 		removeByValue(inactive, player);
 		player.socket = socket;
 		if (player.tableCode) {
-			console.log("PLAYER HAS A TABLE CODE! " + sessionId);
+			//console.log("PLAYER HAS A TABLE CODE! " + sessionId);
 			var table = getTableByCode(player.tableCode);
 			if (table) {
-				console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
+				//console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
 				var tablePlayer = getTablePlayerBySessionId(sessionId, table);
 				tablePlayer.socketId = socket.id;
 				tablePlayer.active = true;
 				//Update player on the state of the world.
 				updateTable(table);
 			} else {
-				console.log("PLAYER'S TABLE DOES NOT EXIST, REMOVING");
+				//console.log("PLAYER'S TABLE DOES NOT EXIST, REMOVING");
 				player.tableCode = undefined;
 				clearTable(socket);
 			}
@@ -988,7 +993,7 @@ function handleNewConnection(socket, sessionId) {
 			clearTable(socket);
 		}
 	} else {
-		console.log("ADDING NEW PLAYER FOR " + sessionId);
+		//console.log("ADDING NEW PLAYER FOR " + sessionId);
 		players.push({
 			// Session/connection
 			socket: socket,
@@ -1012,27 +1017,22 @@ function playerDisconnected(socket) {
 	removeByValue(players, player);
 	var table = getTableBySocketId(socket.id);
 	if (table) { 
-		if (table.state === TABLE_LOBBY) {
-			leaveTable(socket);
+		var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+		tablePlayer.active = false;
+		var anyPlayers = false;
+		for (var tP of table.players) {
+			if (tP.active) {
+				anyPlayers = true;
+				break;
+			}
+		}
+		if (anyPlayers) {
 			updateTable(table);
 		} else {
-			var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
-			tablePlayer.active = false;
-			var anyPlayers = false;
-			for (var tP of table.players) {
-				if (tP.active) {
-					anyPlayers = true;
-					break;
-				}
-			}
-			if (anyPlayers) {
-				updateTable(table);
-			} else {
-				setTimeout(deleteTable.bind(null, table), INACTIVE_TABLE_DELETION_SEC * 1000);
-			}
-			player.socket = undefined;
-			inactive.push(player);
+			setTimeout(deleteTable.bind(null, table), INACTIVE_TABLE_DELETION_SEC * 1000);
 		}
+		player.socket = undefined;
+		inactive.push(player);
 	}
 }
 
