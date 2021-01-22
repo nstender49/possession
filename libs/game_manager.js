@@ -828,7 +828,7 @@ function handleNewGame(table) {
 	demonPlayer.socket.emit("update interfere", game.interfereUses);
 	// Reset resources
 	table.resources = {
-		WATER: 0,
+		WATER: -1,
 	};
 	table.timers = {
 		ROUND_TIMER: false,
