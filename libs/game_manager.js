@@ -661,7 +661,7 @@ function advanceRound(table) {
 						break;
 					case EXORCISM: 
 						var game = getGameByCode(table.code);
-						game.interfereUses += 1;
+						game.interfereUses += 0;  // no more adding
 						var demonPlayer = getPlayerBySessionId(table.demonId);
 						demonPlayer.socket.emit("update interfere", game.interfereUses);
 						possessPlayer(table, table.currentMove.targetName, false);
@@ -802,7 +802,7 @@ function handleNewGame(table) {
 		};
 		games.push(game);
 	}
-	game.interfereUses = 1;
+	game.interfereUses = Math.floor(table.players.length / 2);
 	game.possessedPlayers = [];
 
 	// Clear chat logs
@@ -847,7 +847,7 @@ function handleNewRound(table) {
 	// Update resources
 	table.resources = {
 		BOARD: 1,
-		WATER: table.resources[WATER] + 1,
+		WATER: Math.floor(Math.min(table.players.length / 3, table.resources[WATER] + 1)),
 		ROD: 1,
 		EXORCISM: 1,
 	};
