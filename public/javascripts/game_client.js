@@ -93,7 +93,7 @@ var newTableSettings = {
 	secondTime: 20,
 	selectTime: 30,
 	voteTime: 60,
-	interfereTime: 20,
+	interfereTime: 10,
 };
 
 // Game settings
