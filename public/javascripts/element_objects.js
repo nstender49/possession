@@ -2,9 +2,11 @@ class PreLoadedImage {
 	constructor(src) {
 		this.img = new Image;
 		this.ratio = 1;
+		this.loaded = false;
 		var self = this;
 		this.img.onload = function() {
 			self.ratio = self.img.width / self.img.height;
+			self.loaded = true;
 		};
 		this.img.src = src;
 	}

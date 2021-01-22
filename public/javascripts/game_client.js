@@ -24,22 +24,16 @@ const PLAYER_COLORS = [
 const BEGIN = "BEGIN";
 const SECOND = "SECOND";
 const VOTE = "VOTE";
+
 const PASS = "PASS";
 const BOARD = "BOARD";
 const WATER = "WATER";
 const ROD = "ROD";
 const EXORCISM = "EXORCISM";
+
 const SELECT = "SELECT";
 const INTERFERE = "INTERFERE";
 const FINISH = "FINISH";
-
-// Move images
-const ITEM_IMAGES = [];
-ITEM_IMAGES[WATER] = new PreLoadedImage("/images/water.png");
-ITEM_IMAGES[BOARD] = new PreLoadedImage("/images/planchette.png");
-ITEM_IMAGES[ROD] = new PreLoadedImage("/images/rod.png");
-ITEM_IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
-ITEM_IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
 
 // Timers
 ROUND_TIMER = "round timer";
@@ -47,23 +41,36 @@ MOVE_TIMER = "move timer";
 DEMON_TIMER = "demon timer";
 
 // Sound 
-const SOUND_ON_IMG = new PreLoadedImage("/images/sound_on.png");
-const SOUND_OFF_IMG = new PreLoadedImage("/images/sound_off.png");
-const TABLE_IMAGE = new PreLoadedImage("/images/table.png");
-const FAIL_X_IMAGE = new PreLoadedImage("/images/fail_x.png");
-const VOTED_IMAGE = new PreLoadedImage("/images/voted.png");
-const YES_VOTE_IMAGE = new PreLoadedImage("/images/vote_yes.png");
-const NO_VOTE_IMAGE = new PreLoadedImage("/images/vote_no.png");
-const PENTAGRAM_IMAGE = new PreLoadedImage("/images/pentagram.png");
-const NAMEPLATE_IMAGE = new PreLoadedImage("/images/nameplate.png");
-const HOURGLASS_IMAGE = new PreLoadedImage("/images/hourglass.png");
+SOUND_ON = "sound_on";
+SOUND_OFF = "sound_off";
+TABLE = "table";
+FAIL_X = "fail_x";
+VOTED = "voted";
+YES_VOTE = "vote_yes";
+NO_VOTE = "vote_no";
+PENTAGRAM  = "pentagram";
+NAMEPLATE = "nameplate";
+HOURGLASS = "hourgalss";
+
+const IMAGES = [];
+IMAGES[WATER] = new PreLoadedImage("/images/water.png");
+IMAGES[BOARD] = new PreLoadedImage("/images/planchette.png");
+IMAGES[ROD] = new PreLoadedImage("/images/rod.png");
+IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
+IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
+
+IMAGES[TABLE] = new PreLoadedImage("/images/table.png");
+IMAGES[FAIL_X] = new PreLoadedImage("/images/fail_x.png");
+IMAGES[VOTED] = new PreLoadedImage("/images/voted.png");
+IMAGES[YES_VOTE] = new PreLoadedImage("/images/vote_yes.png");
+IMAGES[NO_VOTE] = new PreLoadedImage("/images/vote_no.png");
+IMAGES[PENTAGRAM] = new PreLoadedImage("/images/pentagram.png");
+IMAGES[NAMEPLATE] = new PreLoadedImage("/images/nameplate.png");
+IMAGES[HOURGLASS] = new PreLoadedImage("/images/hourglass.png");
 
 // Player images
 const AVATAR_COUNT = 50;
 const PLAYER_IMAGES = [];
-for (var i = 0; i < AVATAR_COUNT; i++) {
-	PLAYER_IMAGES[i] = new PreLoadedImage(`/images/avatars/${i}.png`);
-}
 
 // Debug settings
 var DEBUG = false;
@@ -181,7 +188,7 @@ function initLabels() {
 	]);
 
 	// Table
-	labels["table_img"] = new ImageLabel({x: 0.3, y: 0.5}, 0.4, false, TABLE_IMAGE).setCenter(true);
+	labels["table_img"] = new ImageLabel({x: 0.3, y: 0.5}, 0.4, false, IMAGES[TABLE]).setCenter(true);
 	labels["message"] = new Label(0.3, 0.5, "", 20);
 	buttons["leave table"] = new Button(0.3, 0.6, "Leave", 30, leaveTable);
 	buttons["begin game"] = new Button(0.3, 0.4, "Begin", 30, doMove.bind(null, BEGIN));
@@ -189,23 +196,23 @@ function initLabels() {
 	buttons["finish game"] = new Button(0.3, 0.4, "Finish", 30, doMove.bind(null, FINISH));
 
 	// Timers
-	labels["move timer hourglass"] = new ImageLabel({x: 0.28, y: 0.755}, 0.015, false, HOURGLASS_IMAGE);
+	labels["move timer hourglass"] = new ImageLabel({x: 0.28, y: 0.755}, 0.015, false, IMAGES[HOURGLASS]);
 	labels[MOVE_TIMER] = new Label(0.32, 0.79, "{}", 20);
 	drawGroups[MOVE_TIMER] = new DrawGroup([labels["move timer hourglass"], labels[MOVE_TIMER]]);
 	labels["round timer title"] = new Label(0.26, 0.235, "Round", 20);
-	labels["round timer hourglass"] = new ImageLabel({x: 0.295, y: 0.2}, 0.015, false, HOURGLASS_IMAGE);
+	labels["round timer hourglass"] = new ImageLabel({x: 0.295, y: 0.2}, 0.015, false, IMAGES[HOURGLASS]);
 	labels[ROUND_TIMER] = new Label(0.375, 0.235, "{}", 20).setAlign("right");
 	drawGroups[ROUND_TIMER] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels[ROUND_TIMER]]);
 	drawGroups["timers"] = new DrawGroup([drawGroups[MOVE_TIMER], drawGroups[ROUND_TIMER]]);
 
 	// Items
-	buttons[WATER] = new ImageButton({x: 0.24, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[WATER], doMove.bind(null, WATER), false, false, "black");
+	buttons[WATER] = new ImageButton({x: 0.24, y: 0.35}, false, 0.18, true, false, IMAGES[WATER], doMove.bind(null, WATER), false, false, "black");
 	labels["water_count"] = new Label(0.18, 0.37, "{} x", 20);
-	buttons[BOARD] = new ImageButton({x: 0.4, y: 0.35}, false, 0.18, true, false, ITEM_IMAGES[BOARD], doMove.bind(null, BOARD));
+	buttons[BOARD] = new ImageButton({x: 0.4, y: 0.35}, false, 0.18, true, false, IMAGES[BOARD], doMove.bind(null, BOARD));
 	labels["board_count"] = new Label(0.34, 0.37, "{} x", 20);
-	buttons[ROD] = new ImageButton({x: 0.24, y: 0.65}, false, 0.18, true, false, ITEM_IMAGES[ROD], doMove.bind(null, ROD));
+	buttons[ROD] = new ImageButton({x: 0.24, y: 0.65}, false, 0.18, true, false, IMAGES[ROD], doMove.bind(null, ROD));
 	labels["rod_count"] = new Label(0.18, 0.67,"{} x", 20);
-	buttons[EXORCISM] = new ImageButton({x: 0.4, y: 0.65}, false, 0.18, true, false, ITEM_IMAGES[EXORCISM], doMove.bind(null, EXORCISM));
+	buttons[EXORCISM] = new ImageButton({x: 0.4, y: 0.65}, false, 0.18, true, false, IMAGES[EXORCISM], doMove.bind(null, EXORCISM));
 	labels["exorcism_count"] = new Label(0.34, 0.67, "{} x", 20);
 	buttons[PASS] = new Button(0.3, 0.55, "Pass", 15, doMove.bind(null, PASS));
 	drawGroups["items"] = new DrawGroup([
@@ -221,10 +228,10 @@ function initLabels() {
 	]);
 
 	// Voting phase
-	labels[WATER] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[WATER]).setCenter(true);
-	labels[BOARD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[BOARD]).setCenter(true);
-	labels[ROD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[ROD]).setCenter(true);
-	labels[EXORCISM] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, ITEM_IMAGES[EXORCISM]).setCenter(true);
+	labels[WATER] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, IMAGES[WATER]).setCenter(true);
+	labels[BOARD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, IMAGES[BOARD]).setCenter(true);
+	labels[ROD] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, IMAGES[ROD]).setCenter(true);
+	labels[EXORCISM] = new ImageLabel({x: 0.3, y: 0.37}, false, 0.18, IMAGES[EXORCISM]).setCenter(true);
 	buttons["vote yes"] = new Button(0.25, 0.6, "Yes", 20, doVote.bind(null, true)).setSticky(true);
 	buttons["vote no"] = new Button(0.35, 0.6, "No", 20, doVote.bind(null, false)).setSticky(true);
 	drawGroups["voting"] = new DrawGroup([
@@ -247,7 +254,6 @@ function initLabels() {
 	// Game settings (bottom bar)
 	labels["table"] = new Label(0.01, 0.99, "Table {}", 15).setAlign("left").setData("????");
 	labels["error msg"] = new Label(0.5, 0.98, "", 20);
-	// buttons["sound"] = new ImageButton({x: 0.91, y: 0.97}, 0.02, false, false, false, SOUND_ON_IMG, toggleSound.bind(null, true), SOUND_OFF_IMG, toggleSound.bind(null, false));
 	labels["version"] = new Label(0.99, 0.99, "", 15).setAlign("right").setFont("monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
 		labels["table"],

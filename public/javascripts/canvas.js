@@ -9,12 +9,35 @@ function init() {
 
 	document.body.style.backgroundColor = BACKGROUND_COLOR;
 
+	loadImages();
 	initInputs();
 	initLabels();
 
 	changeState(INIT);
 	
 	handleResize();
+}
+
+function loadImages() {
+	for (var i = 0; i < AVATAR_COUNT; i++) {
+		PLAYER_IMAGES[i] = new PreLoadedImage(`/images/avatars/${i}.png`);
+	}
+
+	allLoaded = false;
+	while (!allLoaded) {
+		allLoaded = true;
+		for (var img of IMAGES) {
+			allLoaded &= img.loaded;
+		}
+		// TODO: player images not being marked as loaded, even though they are?
+		/*
+		for (var img of PLAYER_IMAGES) {
+			console.log(`CHECKING ${img} LOADED`);
+			allLoaded &= img.loaded;
+			if (!img.loaded) console.log(`!!! NOT LOADED! ${img.img.src}`);
+		}
+		*/
+	}
 }
 
 var cursorX, cursorY;
@@ -363,7 +386,7 @@ function drawHowTo() {
 			for (var item of items) {
 				if (Math.round(imageY * 100) % 2 == 1)
 					drawRect("#575757", imageX - imageSize, imageY - imageSize * 1.6, 0.95, imageSize * 3.2);
-				var l = new ImageLabel({x: imageX, y: imageY}, imageSize, false, ITEM_IMAGES[item]).setCenter(true);
+				var l = new ImageLabel({x: imageX, y: imageY}, imageSize, false, IMAGES[item]).setCenter(true);
 				l.draw();
 				textY = imageY - 0.04;
 				imageY += imageInc;
@@ -435,7 +458,7 @@ function drawColorSelector(color, x, y, w, h) {
 	if (theTable.playerColors.includes(color)) {
 		buttons[`color ${color}`].disable();
 		buttons[`color ${color}`].show();
-		if (color !== thePlayer.color) ctx.drawImage(FAIL_X_IMAGE.img, x, y, w, h);
+		if (color !== thePlayer.color) ctx.drawImage(IMAGES[FAIL_X].img, x, y, w, h);
 	}
 }
 
@@ -494,7 +517,7 @@ function drawPlayers() {
 function drawPlayerPad(player, x, y, r) {
 	// Draw pentagram under the player pad if player is possessed for player and demon.
 	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
-		drawImage(PENTAGRAM_IMAGE, x, y, r * 2.5 / cvW, false, true, true);
+		drawImage(IMAGES[PENTAGRAM], x, y, r * 2.5 / cvW, false, true, true);
 	}
 	drawCircle(player.color, x, y, r);
 
@@ -506,20 +529,20 @@ function drawPlayerPad(player, x, y, r) {
 	buttons[player.name].enabled = thePlayer.isDemon || gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name;
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
-	if (player.isExorcised) drawImage(ITEM_IMAGES[EXORCISM], x - r * 0.25, y - r * 0.25, false, r * 1.2 / cvH, true, true);
+	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - r * 0.25, y - r * 0.25, false, r * 1.2 / cvH, true, true);
 
 	// Draw name
-	drawImage(NAMEPLATE_IMAGE, x, y + r * 0.7, r * 2 / cvW, false, true, true);
+	drawImage(IMAGES[NAMEPLATE], x, y + r * 0.7, r * 2 / cvW, false, true, true);
 	drawText(player.active ? player.name : `< ${player.name} >`, x, y + r * 0.85, 15, undefined, true, r * 2, 5, player.active ? "black" : "gray");
 
 	// Draw player's move
 	if (player.move) { 
-		drawImage(ITEM_IMAGES[player.move.type], x + r * 0.5, y - r * 0.4, false, r * 0.7 / cvH, true, true);
-		if (player.move.success === false) drawImage(FAIL_X_IMAGE, x + r * 0.5, y - r * 0.4, false, r * 0.6 / cvH, true, true);
+		drawImage(IMAGES[player.move.type], x + r * 0.5, y - r * 0.4, false, r * 0.7 / cvH, true, true);
+		if (player.move.success === false) drawImage(IMAGES[FAIL_X], x + r * 0.5, y - r * 0.4, false, r * 0.6 / cvH, true, true);
 	}
 	// Draw player vote indicator
 	if (player.voted) {
-		var image = player.vote === undefined ? VOTED_IMAGE : (player.vote ? YES_VOTE_IMAGE : NO_VOTE_IMAGE);
+		var image = player.vote === undefined ? IMAGES[VOTED] : (player.vote ? IMAGES[YES_VOTE] : IMAGES[NO_VOTE]);
 		drawImage(image, x + r * 0.5, y + r * 0.2, undefined, r * 0.7 / cvH, true, true);
 	}
 }
