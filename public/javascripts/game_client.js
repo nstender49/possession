@@ -79,7 +79,7 @@ var logFull = true;
 // Config settings received from server.
 var newTableSettings = {
 	// Table settings
-	minPlayers: 4,
+	minPlayers: 2,
 	maxPlayers: 12, 
 	// Time limits
 	/*
