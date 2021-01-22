@@ -79,13 +79,20 @@ var logFull = true;
 // Config settings received from server.
 var newTableSettings = {
 	// Table settings
-	minPlayers: 3,
+	minPlayers: 5,
 	maxPlayers: 12, 
 	// Time limits
+	/*
 	roundTime: 300,
 	secondTime: 10,
 	selectTime: 15,
 	voteTime: 30,
+	interfereTime: 10,
+	*/
+	roundTime: 600,
+	secondTime: 20,
+	selectTime: 30,
+	voteTime: 60,
 	interfereTime: 10,
 };
 

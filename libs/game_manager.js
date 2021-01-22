@@ -1013,22 +1013,17 @@ function insertInactivePlayer(table, player, tablePlayer) {
 	//Update player on the state of the world.
 	updateTable(table);
 	// Send chat
-	console.log("UPDATING TABLE LOG");
 	for (var l of chatLogs[table.code][GENERAL]) {
 		player.socket.emit("chat msg", l.msg, l.sender);
 	}
 	// Send demon chat if it exists
-	console.log("UPDATING DEMON LOG");
 	if (chatLogs[table.code][tablePlayer.name]) {
 		for (var l of chatLogs[table.code][tablePlayer.name]) {
 			player.socket.emit("demon msg", l.msg, l.player);
 		}
 	}
-	console.log("GETTTING GAME");
 	var game = getGameByCode(table.code);
-	console.log("UPDATING POSSESSION");
 	if (game && game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
-	console.log("UPDATING DEMON!");
 	if (tablePlayer.isDemon) {
 		player.socket.emit("possessed players", game.possessedPlayers);
 		player.socket.emit("update interfere", game.interfereUses);
