@@ -183,6 +183,7 @@ function createTableCode() {
 function joinTable(socket, code, name, avatarId, color) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	var player = getPlayerBySocketId(socket.id);
+
 	// Check for errors
 	if (!player) {
 		player.socket.emit("server error", "Invalid connection to server!");
@@ -193,18 +194,6 @@ function joinTable(socket, code, name, avatarId, color) {
 		player.socket.emit("server error", "Table " + code + " not found!");
 		return false;
 	}
-	for (var tablePlayer of table.players) {
-		if (name === tablePlayer.name) {
-			if (tablePlayer.active) {
-				player.socket.emit("server error", "Player with name '" + name + "' already exists at table " + code);
-				return false;
-			} else {
-				// Allow an inactive player to be replaced with a new player (in case of session issue)
-				insertInactivePlayer(table, player, tablePlayer);
-				return true;
-			}
-		}
-	}
 	if (table.players.length >= table.settings.maxPlayers) {
 		player.socket.emit("server error", "Table " + code + " full!");
 		return false;
@@ -212,6 +201,12 @@ function joinTable(socket, code, name, avatarId, color) {
 	if (table.state !== TABLE_LOBBY) {
 		player.socket.emit("server error", "Table " + code + " game in progress!");
 		return false;
+	}
+	for (var tablePlayer of table.players) {
+		if (name === tablePlayer.name) {
+			player.socket.emit("server error", "Player with name '" + name + "' already exists at table " + code);
+			return false;
+		}
 	}
 	// Add player to the table.
 	player.tableCode = code;
@@ -828,7 +823,7 @@ function handleNewGame(table) {
 	demonPlayer.socket.emit("update interfere", game.interfereUses);
 	// Reset resources
 	table.resources = {
-		WATER: -1,
+		WATER: 0,
 	};
 	table.timers = {
 		ROUND_TIMER: false,
@@ -983,7 +978,31 @@ function handleNewConnection(socket, sessionId) {
 			if (table) {
 				console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
 				var tablePlayer = getTablePlayerBySessionId(sessionId, table);
-				insertInactivePlayer(table, player, tablePlayer);
+				tablePlayer.socketId = socket.id;
+				tablePlayer.active = true;
+				//Update player on the state of the world.
+				updateTable(table);
+				// Send chat
+				console.log("UPDATING TABLE LOG");
+				for (var l of chatLogs[table.code][GENERAL]) {
+					socket.emit("chat msg", l.msg, l.sender);
+				}
+				// Send demon chat if it exists
+				console.log("UPDATING DEMON LOG");
+				if (chatLogs[table.code][tablePlayer.name]) {
+					for (var l of chatLogs[table.code][tablePlayer.name]) {
+						socket.emit("demon msg", l.msg, l.player);
+					}
+				}
+				console.log("GETTTING GAME");
+				var game = getGameByCode(table.code);
+				console.log("UPDATING POSSESSION");
+				if (game && game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
+				console.log("UPDATING DEMON!");
+				if (tablePlayer.isDemon) {
+					player.socket.emit("possessed players", game.possessedPlayers);
+					player.socket.emit("update interfere", game.interfereUses);
+				}
 			} else {
 				player.tableCode = undefined;
 				clearTable(socket);
@@ -1003,30 +1022,6 @@ function handleNewConnection(socket, sessionId) {
 			possessed: false,
 		});
 		clearTable(socket);
-	}
-}
-
-function insertInactivePlayer(table, player, tablePlayer) {
-	tablePlayer.socketId = player.socket.id;
-	tablePlayer.sessionId = player.sessionId;
-	tablePlayer.active = true;
-	//Update player on the state of the world.
-	updateTable(table);
-	// Send chat
-	for (var l of chatLogs[table.code][GENERAL]) {
-		player.socket.emit("chat msg", l.msg, l.sender);
-	}
-	// Send demon chat if it exists
-	if (chatLogs[table.code][tablePlayer.name]) {
-		for (var l of chatLogs[table.code][tablePlayer.name]) {
-			player.socket.emit("demon msg", l.msg, l.player);
-		}
-	}
-	var game = getGameByCode(table.code);
-	if (game && game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
-	if (tablePlayer.isDemon) {
-		player.socket.emit("possessed players", game.possessedPlayers);
-		player.socket.emit("update interfere", game.interfereUses);
 	}
 }
 
