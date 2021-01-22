@@ -11,6 +11,6 @@ canvas {
 #player-chat > li { padding: 0.5rem 1rem; }
 #player-chat > li:nth-child(odd) { background: #575757; }
 
-#demon-chat { list-style-type: none; margin: 0; padding: 0; overflow: auto; font-family: "OctoberCrow"; font-weight: 600; background: #810000; color: #000000}
+#demon-chat { list-style-type: none; margin: 0; padding: 0; overflow: auto; font-weight: 600; background: #810000; color: #000000}
 #demon-chat > li { padding: 0.5rem 1rem; }
 #demon-chat > li:nth-child(odd) { background: #b30000; }
