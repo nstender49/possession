@@ -802,7 +802,7 @@ function handleNewGame(table) {
 		};
 		games.push(game);
 	}
-	game.interfereUses = 0;
+	game.interfereUses = 1;
 	game.possessedPlayers = [];
 
 	// Clear chat logs
