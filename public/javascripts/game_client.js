@@ -442,10 +442,10 @@ function doInterfere(vote) {
 	socket.emit("do move", {type: INTERFERE, vote: vote});
 }
 
-function selectPlayer(playerId, name) {
+function selectPlayer(name) {
 	if (thePlayer.isDemon) {
 		if (gameState === TABLE_NIGHT) {
-			socket.emit("do move", {type: SELECT, targetId: playerId});
+			socket.emit("do move", {type: SELECT, targetName: name});
 		} else {
 			if (possessedPlayers.includes(name)) {
 				selectedPlayer = name;
@@ -453,7 +453,7 @@ function selectPlayer(playerId, name) {
 		}
 	} else {
 		if (gameState === TABLE_SELECT) {
-			socket.emit("do move", {type: SELECT, targetId: playerId});
+			socket.emit("do move", {type: SELECT, targetName: name});
 		}
 	}
 }
@@ -614,7 +614,7 @@ function updateTable(table) {
 			}
 			// Make button avatars for players if they don't exist
 			if (!buttons[player.name]) {
-				buttons[player.name] = new ImageButton({x: 0, y: 0}, 0, false, true, true, PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.sessionId, player.name));
+				buttons[player.name] = new ImageButton({x: 0, y: 0}, 0, false, true, true, PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.name));
 			}
 		}
 

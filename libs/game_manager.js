@@ -414,10 +414,8 @@ function processDemonMove(table, player, move) {
 		case TABLE_LOBBY:
 			break;
 		case TABLE_NIGHT:
-			if (move.type !== SELECT) {
-				return result;
-			}
-			var success = possessPlayer(table, move.targetId, true);
+			if (move.type !== SELECT) return result;
+			var success = possessPlayer(table, move.targetName, true);
 			result.handled = success;
 			result.advance = success;
 			break;
@@ -539,8 +537,8 @@ function processPlayerMove(table, player, tablePlayer, move) {
 				return result;
 			}
 			// Player cannot select themself.
-			if (move.targetId === player.sessionId) return result;
-			table.currentMove.targetId = move.targetId;
+			if (move.targetNmae === tablePlayer.name) return result;
+			table.currentMove.targetName = move.targetName;
 			result.handled = true;
 			result.advance = true;
 			break;
@@ -638,20 +636,20 @@ function advanceRound(table) {
 			clearVotes(table);
 			table.state = TABLE_DISPLAY;
 
-			if (table.currentMove.targetId) {
-				var targetTablePlayer = getTablePlayerBySessionId(table.currentMove.targetId, table);
+			if (table.currentMove.targetName) {
+				var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
 				table.message = `${table.currentMove.playerName} is ${ITEM_USE_MSG[table.currentMove.type]} ${targetTablePlayer.name}.`;
 				table.resources[table.currentMove.type] -= 1;
 
 				switch (table.currentMove.type) {
 					case WATER:
-						possessPlayer(table, table.currentMove.targetId, false);
+						possessPlayer(table, table.currentMove.targetName, false);
 						break;
 					case BOARD:
 						var game = getGameByCode(table.code);
 						table.demonMessage = `Players are testing ${targetTablePlayer.name}, interfere?`;
 						table.state = TABLE_INTERFERE;
-						var demonPlayer = getPlayerBySocketId(table.demonId);
+						var demonPlayer = getPlayerBySessionId(table.demonId);
 						table.timers[DEMON_TIMER] = getTimerValue(table.settings.interfereTime);
 						break;
 					case ROD:
@@ -661,18 +659,18 @@ function advanceRound(table) {
 						var player = getPlayerBySessionId(table.currentMove.playerId);
 						player.socket.emit("pop up", message);
 						break;
-					case EXORCISM:
+					case EXORCISM: 
 						var game = getGameByCode(table.code);
 						game.interfereUses += 1;
 						var demonPlayer = getPlayerBySessionId(table.demonId);
 						demonPlayer.socket.emit("update interfere", game.interfereUses);
-						possessPlayer(table, table.currentMove.targetId, false);
+						possessPlayer(table, table.currentMove.targetName, false);
 						targetTablePlayer.isExorcised = true;
 						if (!targetTablePlayer.move) {
 							targetTablePlayer.move = {type: PASS};
 						}
 						table.hasExorcised = true;
-						var targetPlayer = getPlayerBySessionId(table.currentMove.targetId);
+						var targetPlayer = getPlayerBySessionId(targetTablePlayer.sessionId);
 						targetPlayer.socket.emit("pop up", "You are unconscious until tomorrow, do not speak!");
 						break;
 				}
@@ -684,7 +682,7 @@ function advanceRound(table) {
 			autoAdvanceRound(table, table.state === TABLE_INTERFERE ? table.settings.interfereTime + 1 : SHOW_RESULT_DISPLAY_SEC);
 			break;
 		case TABLE_INTERFERE:
-			var targetTablePlayer = getTablePlayerBySessionId(table.currentMove.targetId, table);
+			var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
 			var game = getGameByCode(table.code);
 			var is = game.possessedPlayers.includes(targetTablePlayer.name);
 			if (game.doInterfere) {
@@ -804,7 +802,7 @@ function handleNewGame(table) {
 		};
 		games.push(game);
 	}
-	game.interfereUses = 1;
+	game.interfereUses = 0;
 	game.possessedPlayers = [];
 
 	// Clear chat logs
@@ -823,7 +821,7 @@ function handleNewGame(table) {
 	demonPlayer.socket.emit("update interfere", game.interfereUses);
 	// Reset resources
 	table.resources = {
-		WATER: 0,
+		WATER: -1,
 	};
 	table.timers = {
 		ROUND_TIMER: false,
@@ -855,12 +853,12 @@ function handleNewRound(table) {
 	};
 }
 
-function possessPlayer(table, targetId, doPossess) {
+function possessPlayer(table, targetName, doPossess) {
 	var game = getGameByCode(table.code);
 	var demonPlayer = getPlayerBySessionId(table.demonId);
 	var demonTablePlayer = getTablePlayerBySessionId(table.demonId, table);
-	var tablePlayer = getTablePlayerBySessionId(targetId, table);
-	var targetPlayer = getPlayerBySessionId(targetId);
+	var tablePlayer = getTablePlayerByName(targetName, table);
+	var targetPlayer = getPlayerBySessionId(tablePlayer.sessionId);
 	if (doPossess) {
 		if (game.possessedPlayers.includes(tablePlayer.name)) {
 			return false;
@@ -958,7 +956,7 @@ function handleNewConnection(socket, sessionId) {
 	console.log("NEW CONNECTION");
 	console.log(cookie.parse(socket.request.headers.cookie)["connect.sid"]);
 
-	var sessionId = DEBUG ? socket.id : cookie.parse(socket.request.headers.cookie)["connect.sid"];
+	var sessionId = DEBUG ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
 	//console.log("SESSION ID: " + sessionId); 
 	var player = getPlayerBySessionId(sessionId);
 	if (player) {
@@ -1093,10 +1091,8 @@ function getPlayerBySocketId(socketId) {
 
 function getPlayerBySessionId(sessionId) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	for (var i = 0; i < players.length; i++) {
-		if (players[i].sessionId === sessionId) {
-			return players[i];
-		}
+	for (var player of players) {
+		if (player.sessionId === sessionId) return player;
 	}
 	return false;
 }
