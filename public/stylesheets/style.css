@@ -9,8 +9,10 @@ canvas {
 
 #player-chat { list-style-type: none; margin: 0; padding: 0; overflow: auto; background: #333333; color: #ffffff}
 #player-chat > li { padding: 0.5rem 1rem; }
-#player-chat > li:nth-child(odd) { background: #575757; }
+#game-log { list-style-type: none; margin: 0; padding: 0; overflow: auto; background: #333333; color: #ffffff}
+#game-log > li { padding: 0.5rem 1rem; }
+#game-log > li:nth-child(odd) { background: #575757; }
 
-#demon-chat { list-style-type: none; margin: 0; padding: 0; overflow: auto; font-weight: 600; background: #810000; color: #000000}
-#demon-chat > li { padding: 0.5rem 1rem; }
-#demon-chat > li:nth-child(odd) { background: #b30000; }
+.demon-chat { list-style-type: none; margin: 0; padding: 0; overflow: auto; background: #810000; color: #000000}
+.demon-chat > li { padding: 0.5rem 1rem; }
+.demon-chat > li:nth-child(odd) { background: #b30000; }

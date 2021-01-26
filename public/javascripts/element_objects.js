@@ -13,9 +13,12 @@ class PreLoadedImage {
 }
 
 class Element {
-	constructor(x, y) {
-		this.xx = x;
-		this.yy = y;
+	constructor() {
+		this.xx = 0;
+		this.yy = 0;
+
+		this.width = 0;
+		this.height = 0;
 
 		this.absolute = false;
 		this.center = false;
@@ -35,6 +38,13 @@ class Element {
 	setPosition(x, y) {
 		this.xx = x;
 		this.yy = y;
+		return this;
+	}
+
+	setDims(w, h) {
+		this.width = w;
+		this.height = h;
+		return this;
 	}
 
 	setAbsolute(val) {
@@ -49,14 +59,14 @@ class Element {
 
 	x() {
 		var x = this.xx;
-		if (!this.absolute) x *= cvW;
+		if (!this.absolute) x = x * cvW + wOff;
 		if (this.center) x -= this.dims().width / 2;
 		return x;
 	}
 
 	y() {
 		var y = this.yy;
-		if (!this.absolute) y *= cvH;
+		if (!this.absolute) y = y * cvH + hOff;
 		if (this.center) y -= this.dims().height / 2;
 		return y;
 	}
@@ -65,21 +75,24 @@ class Element {
 		this.visible = true;
 		this.enabled = true;
 		this.clicked = false;
+		return this;
 	}
 
 	disable() {
 		this.visible = false;
 		this.enabled = false;
+		return this;
 	}
 
 	show() {
 		this.visible = true;
+		return this;
 	}
 }
 
 class TextElement extends Element {
-	constructor(x, y, text, size) {
-		super(x, y);
+	constructor(text, size) {
+		super();
 
 		this.text = text;
 		this.data = "{}";
@@ -151,8 +164,8 @@ class TextElement extends Element {
 }
 
 class Label extends TextElement {
-	constructor(x, y, text, size) {
-		super(x, y, text, size);
+	constructor(text, size) {
+		super(text, size);
 	}
 
 	draw() {
@@ -181,6 +194,11 @@ let ButtonMixin = (superclass) => class extends superclass {
 
 	setSticky(val) {
 		if (val !== undefined) this.sticky = val;
+		return this;
+	}
+
+	setHoldable(val) {
+		if (val !== undefined) this.holdable = val;
 		return this;
 	}
 
@@ -236,17 +254,78 @@ let ButtonMixin = (superclass) => class extends superclass {
 };
 
 class Button extends ButtonMixin(TextElement) {
-	constructor(x, y, text, size, callback, uncallback, sticky, holdable, border, margin) {
-		super(x, y, text, size);
+	constructor(text, size, callback, uncallback) {
+		super(text, size);
 
 		this.callback = callback;
 		this.uncallback = uncallback;
-		
 
-		this.margin = margin || 20;
-		this.border = border === undefined ? true : border;
-		this.holdable = holdable;
+		this.margin = 20;
+		this.border = true;
+		this.holdable = false;
 		this.holdTicks = 0;
+	}
+
+	setBorder(val) {
+		if (val !== undefined) this.border = val;
+		return this;
+	}
+
+	setMargin(val) {
+		if (val !== undefined) this.margin = val;
+		return this;
+	}
+
+	draw() {
+		if (!this.visible) { return; }
+
+		if (this.focus || this.clicked) {
+			ctx.strokeStyle = RED;
+			ctx.fillStyle = RED;
+		} else if (this.isEnabled()) {
+			ctx.strokeStyle = WHITE;
+			ctx.fillStyle = WHITE;
+		} else {
+			ctx.strokeStyle = "grey";
+			ctx.fillStyle = "grey";
+		}
+		ctx.font = (this.size * r) + "px " + this.font;
+	
+		var buttonDims = this.buttonDims();
+		ctx.lineWidth = this.border * r;
+		ctx.lineJoin = "round";
+		if (this.border) {
+			ctx.strokeRect(buttonDims.left, buttonDims.top, buttonDims.width, buttonDims.height);
+		}
+
+		ctx.textBaseline = "center";
+		ctx.textAlign = this.align;
+
+		ctx.fillText(this.text, this.x(), this.y());
+	}
+}
+
+class ImgBackButton extends ButtonMixin(TextElement) {
+	constructor(text, size, callback, uncallback) {
+		super(text, size);
+
+		this.callback = callback;
+		this.uncallback = uncallback;
+
+		this.margin = 20;
+		this.border = true;
+		this.holdable = false;
+		this.holdTicks = 0;
+	}
+
+	setBorder(val) {
+		if (val !== undefined) this.border = val;
+		return this;
+	}
+
+	setMargin(val) {
+		if (val !== undefined) this.margin = val;
+		return this;
 	}
 
 	draw() {
@@ -279,10 +358,8 @@ class Button extends ButtonMixin(TextElement) {
 }
 
 class ImageElement extends Element {
-	constructor(x, y, w, h) {
-		super(x, y);
-		this.width = w;
-		this.height = h;
+	constructor() {
+		super();
 	}
 
 	dims() {
@@ -317,8 +394,8 @@ class ImageElement extends Element {
 }
 
 class ImageLabel extends ImageElement {
-	constructor(position, width, height, img) {
-		super(position.x, position.y, width, height);
+	constructor(img) {
+		super();
 		this.img = img;
 	}
 
@@ -332,11 +409,8 @@ class ImageLabel extends ImageElement {
 }
 
 class ImageButton extends ButtonMixin(ImageElement) {
-	constructor(position, width, height, center, absolute, on_img, callback, off_img, uncallback) {
-		super(position.x, position.y, width, height);
-
-		this.center = center
-		this.absolute = absolute;
+	constructor(on_img, callback, off_img, uncallback) {
+		super();
 
 		this.callback = callback;
 		this.uncallback = uncallback;
@@ -358,11 +432,9 @@ class ImageButton extends ButtonMixin(ImageElement) {
 }
 
 class ShapeButton extends ButtonMixin(ImageElement) {
-	constructor(position, width, height, center, absolute, color, callback) {
-		super(position.x, position.y, width, height);
+	constructor(color, callback) {
+		super();
 
-		this.center = center
-		this.absolute = absolute;
 		this.callback = callback;
 		this.color = color;
 	}
@@ -382,8 +454,12 @@ class ShapeButton extends ButtonMixin(ImageElement) {
 }
 
 class DrawGroup {
-	constructor(draws) {
+	constructor(draws = []) {
 		this.draws = draws;
+	}
+
+	add(item) {
+		this.draws.push(item);
 	}
 
 	show() {
