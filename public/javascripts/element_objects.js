@@ -321,7 +321,7 @@ function drawBorderedRect(x, y, w, h, fillColor, borderColor) {
 	ctx.strokeStyle = borderColor;
 
 	ctx.lineJoin = "round";
-	var cornerRadius = Math.min(w, h) * 0.1;
+	var cornerRadius = 5 * r;
 	ctx.lineWidth = cornerRadius;
 
 	ctx.strokeRect(x+(cornerRadius/2), y+(cornerRadius/2), w-cornerRadius, h-cornerRadius);
@@ -481,29 +481,34 @@ class DrawGroup {
 
 	add(item) {
 		this.draws.push(item);
+		return this;
 	}
 
 	show() {
 		for (var d of this.draws) {
 			d.show();
 		}
+		return this;
 	}
 
 	draw() {
 		for (var d of this.draws) {
 			d.draw();
 		}
+		return this;
 	}
 	
 	enable() {
 		for (var d of this.draws) {
 			d.enable();
 		}
+		return this;
 	}
 
 	disable() {
 		for (var d of this.draws) {
 			d.disable();
 		}
+		return this;
 	}
 }

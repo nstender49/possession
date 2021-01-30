@@ -469,7 +469,8 @@ function drawAvatarSelection() {
 
 function drawColorSelector(color, x, y, w, h) {
 	if (color === thePlayer.color) {
-		drawRect("gray", x - 2, y - 2, w + 4, h + 4, true);
+		var margin = 2 * r;
+		drawRect("gray", x - margin, y - margin, w + margin * 2, h + margin * 2, true);
 	}
 	buttons[`color ${color}`].setPosition(x, y);
 	buttons[`color ${color}`].width = w / cvW;
@@ -483,16 +484,19 @@ function drawColorSelector(color, x, y, w, h) {
 }
 
 function drawPopUp() {
+	var screenPos = thePlayer && thePlayer.isDemon ? 0.35 : 0.15;
+	var screenL = 0.3;
 	overlayed = true;
-	var x = 0.15 * cvW + wOff;
+	var x = screenPos * cvW + wOff;
 	var y = 0.4 * cvH + hOff;
-	var w = 0.3 * cvW;
+	var w = screenL * cvW;
 	var h = 0.18 * cvH;
 	drawRect("#333333", x, y, w, h, true);
 	drawRect("#810000", x + 10, y + 10, w - 20, h - 20, true);
-	var msg = new Label(popupMessage, 20).setPosition(0.3, 0.46);
+	var msg = new Label(popupMessage, 20).setPosition(screenPos + screenL / 2, 0.46);
 	scaleLabelsToWidth([msg], w - 30, 10);
 	msg.draw();
+	buttons["clear popup"].setPosition(screenPos + screenL / 2, 0.53);
 	buttons["clear popup"].enable();
 	buttons["clear popup"].draw();
 }
@@ -512,7 +516,8 @@ function drawDemonControlPanel() {
 	}
 
 	// Demon message
-	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.5, 0.23, 20);
+	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.16, 0.23, 20, "left", false, 0.4 * cvW);
+	if (gameState == TABLE_INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups["interfere"].enable().draw();
 
 	// Items
 	if (gameState === TABLE_DAY) {
@@ -561,7 +566,7 @@ function drawDemonControlPanel() {
 	// Item fast chat buttons
 	var dx = 0.3;
 	for (var item of ITEMS) {
-		buttons[`fast chat ${item}`].setPosition(dx, 0.875).enable().enable().draw();
+		buttons[`fast chat ${item}`].setPosition(dx, 0.875).setMargin(5 * r).enable().draw();
 		dx -= 0.05;
 	}
 	// Position player quick chat buttons
@@ -593,10 +598,8 @@ function drawTable() {
 
 	// Draw message.
 	var msg = theTable.message;
-	if (gameState === MAIN_MENU && theTable.players.length >= theTable.settings.minPlayers && isTableOwner()) {
-		msg = "Press Begin to start game!";
-	}
-	drawText(msg, 0.3, 0.48, 20, "center", false, labels["table_img"].dims().width * 0.9);
+	if (gameState === TABLE_LOBBY && theTable.players.length >= theTable.settings.minPlayers && isTableOwner()) msg = "";
+	drawText(msg, 0.3, 0.5, 20, "center", false, labels["table_img"].dims().width * 0.9);
 
 	// Draw buttons
 	if (gameState === TABLE_DAY) {
@@ -635,9 +638,9 @@ function drawTableItems() {
 function drawItemButton(item, x, y, size) {
 	var num = Math.max(0, theTable.resources[item] || 0);
 	if (!num) buttons[item].disable().show();
-	buttons[item].setPosition(x, y).setDims(false, size).setBackground(BUTTON_BACKGROUND).setMargin(10).draw();
+	buttons[item].setPosition(x, y).setDims(false, size).setBackground(BUTTON_BACKGROUND).setMargin(10 * r).draw();
 	new Label(`${num} x `, 12).setPosition(x - size * 0.075 * cvW, y - size * 0.275 * cvH).setAbsolute(true).setColor(buttons[item].textColor()).setAlign("right").draw();
-	if (thePlayer.isDemon) drawCircle(interfereUses[item] > 0 ? "green" : "red", x - size * 0.2 * cvW, y + size * 0.3 * cvH, 7.5);
+	if (thePlayer.isDemon) drawCircle(interfereUses[item] > 0 ? "green" : "red", x - size * 0.2 * cvW, y + size * 0.3 * cvH, 5 * r);
 }
 
 function drawPlayers() {

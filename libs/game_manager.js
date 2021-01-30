@@ -696,7 +696,7 @@ function advanceRound(table) {
 					case ROD:
 					case EXORCISM:
 						table.state = TABLE_INTERFERE;
-						table.demonMessage = table.message + `. Interfere? (if possible)`;
+						table.demonMessage = undefined;
 						table.timers[DEMON_TIMER] = getTimerValue(table.settings.interfereTime);
 						var game = getGameByCode(table.code);
 						game.doInterfere = false;
@@ -753,6 +753,7 @@ function advanceRound(table) {
 		case TABLE_END:
 			clearMoves(table);
 			table.state = TABLE_LOBBY;
+			table.msg = WAIT_MSG;
 			// Reset some state.
 			for (var tablePlayer of table.players) {
 				tablePlayer.isDamned = false;

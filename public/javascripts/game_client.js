@@ -67,7 +67,6 @@ IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
 IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
 
 IMAGES[BACK] = new PreLoadedImage("/images/background.jpg");
-IMAGES[BUTTON] = new PreLoadedImage("/images/button.png");
 IMAGES[TABLE] = new PreLoadedImage("/images/table.png");
 IMAGES[FAIL_X] = new PreLoadedImage("/images/fail_x.png");
 IMAGES[VOTED] = new PreLoadedImage("/images/voted.png");
@@ -221,8 +220,8 @@ function initLabels() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	// Main menu
 	labels["title"] = new Label("POSSESSION", 80).setPosition(0.5, 0.4);
-	buttons["make table"] = new Button("Make Table", 60, makeTable).setPosition(0.5, 0.55).setDims(0.445, 0.14).setCenter(true);
-	buttons["join table"] = new Button("Join Table", 60, joinTable).setPosition(0.5, 0.80).setDims(0.445, 0.14).setCenter(true);
+	buttons["make table"] = new Button("Make Table", 60, makeTable).setPosition(0.5, 0.55).setDims(0.427, 0.14).setCenter(true);
+	buttons["join table"] = new Button("Join Table", 60, joinTable).setPosition(0.5, 0.80).setDims(0.427, 0.14).setCenter(true);
 	drawGroups["main menu"] = new DrawGroup([
 		labels["title"],
 		buttons["make table"],
@@ -233,9 +232,9 @@ function initLabels() {
 	labels["table_img"] = new ImageLabel(IMAGES[TABLE]).setCenter(true).setPosition(0.3, 0.5).setDims(0.4)
 
 	buttons["leave table"] = new Button("Leave Table", 15, leaveTable).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
-	buttons["begin game"] = new Button("Start Game", 15, doMove.bind(null, BEGIN)).setPosition(0.3, 0.4).setDims(0.15, 0.07).setCenter(true);
+	buttons["begin game"] = new Button("Start Game", 15, doMove.bind(null, BEGIN)).setPosition(0.3, 0.5).setDims(0.15, 0.07).setCenter(true);
 	buttons["change avatar"] = new Button("Change Avatar", 15, enableOverlay.bind(null, OVERLAY_AVATAR)).setPosition(0.3, 0.7).setDims(0.15, 0.07).setCenter(true);
-	buttons["finish game"] = new Button("Finish Game", 15, doMove.bind(null, FINISH)).setPosition(0.3, 0.4).setDims(0.15, 0.07).setCenter(true);
+	buttons["finish game"] = new Button("Finish Game", 15, doMove.bind(null, FINISH)).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
 
 	// Timers
 	labels["move timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setPosition(0.28, 0.755).setDims(0.015);
@@ -253,7 +252,7 @@ function initLabels() {
 		buttons[item] = new ImageButton(IMAGES[item], doMove.bind(null, item)).setCenter(true).setAbsolute(true);
 		drawGroups["items"].add(buttons[item]);
 	}
-	buttons[PASS] = new Button("Pass", 15, doMove.bind(null, PASS)).setPosition(0.3, 0.525).setDims(0.075, 0.05).setCenter(true);
+	buttons[PASS] = new Button("Pass", 15, doMove.bind(null, PASS)).setPosition(0.3, 0.54).setDims(0.05, 0.05).setCenter(true);
 	
 	drawGroups["items"].add(buttons[PASS]);
 
@@ -265,8 +264,8 @@ function initLabels() {
 	labels[BOARD] = new ImageLabel(IMAGES[BOARD]).setCenter(true);
 	labels[ROD] = new ImageLabel(IMAGES[ROD]).setCenter(true);
 	labels[EXORCISM] = new ImageLabel(IMAGES[EXORCISM]).setCenter(true);
-	buttons["vote yes"] = new Button("Yes", 20, doVote.bind(null, true)).setPosition(0.25, 0.6).setSticky(true);
-	buttons["vote no"] = new Button("No", 20, doVote.bind(null, false)).setPosition(0.35, 0.6).setSticky(true);
+	buttons["vote yes"] = new Button("Yes", 20, doVote.bind(null, true)).setDims(0.05, 0.05).setPosition(0.25, 0.6).setCenter(true).setSticky(true);
+	buttons["vote no"] = new Button("No", 20, doVote.bind(null, false)).setDims(0.05, 0.05).setPosition(0.35, 0.6).setCenter(true).setSticky(true);
 	drawGroups["voting"] = new DrawGroup([
 		buttons["vote yes"],
 		buttons["vote no"],
@@ -283,9 +282,11 @@ function initLabels() {
 	])
 
 	// Demon / interfere
-	buttons["interfere yes"] = new Button("Yes", 20, doInterfere.bind(null, true)).setPosition(0, 0);
-	buttons["interfere no"] = new Button("No", 20, doInterfere.bind(null, false)).setPosition(0, 0);
+	labels["interfere"] = new Label("Interfere:", 20).setPosition(0.62, 0.23);
+	buttons["interfere yes"] = new Button("Yes", 20, doInterfere.bind(null, true)).setDims(0.05, 0.05).setPosition(0.695, 0.22).setCenter(true);
+	buttons["interfere no"] = new Button("No", 20, doInterfere.bind(null, false)).setDims(0.05, 0.05).setPosition(0.75, 0.22).setCenter(true);
 	drawGroups["interfere"] = new DrawGroup([
+		labels["interfere"],
 		buttons["interfere yes"],
 		buttons["interfere no"],
 	]);
@@ -321,7 +322,7 @@ function initLabels() {
 	]);
 
 	// Pop up
-	buttons["clear popup"] = new Button("OK", 20, clearOverlay).setPosition(0.3, 0.53).setOverlay();
+	buttons["clear popup"] = new Button("OK", 20, clearOverlay).setDims(0.05, 0.05).setOverlay().setCenter(true);
 
 	// How to play
 	buttons["clear howto"] = new Button("Ok", 20, clearOverlay).setPosition(0.5, 0.91).setOverlay();
@@ -334,7 +335,7 @@ function initLabels() {
 	]);
 
 	// Avatar selection
-	buttons["clear avatar"] = new Button("✓", 40, clearOverlay).setPosition(0.955, 0.9).setOverlay();
+	buttons["clear avatar"] = new Button("✓", 40, clearOverlay).setDims(0.06).setPosition(0.955, 0.88).setCenter(true).setOverlay();
 	drawGroups["avatar selection"] = new DrawGroup([]);
 	for (var i = 0; i < AVATAR_COUNT; i++) {
 		buttons[`avatar ${i}`] = new ImageButton(PLAYER_IMAGES[i], changeAvatar.bind(null, i)).setAbsolute(true).setOverlay();
