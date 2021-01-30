@@ -57,6 +57,29 @@ class Element {
 		return this;
 	}
 
+	setBackground(color, textColor) {
+		if (color) this.bColor = color;
+		if (textColor) this.tColor = textColor;
+		return this;
+	}
+
+	bgndColor() {
+		return this.bColor || BUTTON_BACKGROUND;
+	}
+
+	textColor() {
+		return this.tColor || BUTTON_TEXT;
+	}
+
+	borderColor() {
+		return this.isEnabled() ? BUTTON_BORDER : "grey";
+	}
+
+	setMargin(val) {
+		if (val !== undefined) this.margin = val;
+		return this;
+	}
+
 	x() {
 		var x = this.xx;
 		if (!this.absolute) x = x * cvW + wOff;
@@ -87,6 +110,30 @@ class Element {
 	show() {
 		this.visible = true;
 		return this;
+	}
+
+	
+	dims() {
+		var w = this.width * (this.absolute ? 1 : cvW);
+		var h = this.height * (this.absolute ? 1 : cvH);
+		if (!this.width) w = h;
+		if (!this.height) h = w;
+		return {width: w, height: h};
+	}
+
+	buttonDims() {
+		var dims = this.dims();
+		var x = this.x();
+		var y = this.y();
+
+		return {
+			left: x,
+			right: x + dims.width,
+			top: y,
+			bot: y + dims.height,
+			width: dims.width,
+			height: dims.height,
+		}
 	}
 }
 
@@ -128,7 +175,7 @@ class TextElement extends Element {
 		return this;
 	}
 
-	dims() {
+	textDims() {
 		ctx.font = (this.size * r) + "px " + this.font;
 		var metrics = ctx.measureText(this.text)
 		return {
@@ -136,8 +183,14 @@ class TextElement extends Element {
 			height: metrics.actualBoundingBoxAscent,
 		}
 	}
+	dims() {
+		if (this.width || this.height) return super.dims();
+		return this.textDims();
+	}
 
 	buttonDims() {
+		if (this.width || this.height) return super.buttonDims();
+
 		var dims = this.dims();
 		var margin = this.margin * r;
 	
@@ -198,12 +251,20 @@ let ButtonMixin = (superclass) => class extends superclass {
 	}
 
 	setHoldable(val) {
-		if (val !== undefined) this.holdable = val;
+		if (val !== undefined) this.holdable = val; this.holdTicks = 0;
 		return this;
 	}
 
 	isEnabled() {
 		return this.enabled && (!overlay || this.isOverlay);
+	}
+
+	bgndColor() {
+		return (this.focus || this.clicked) ? super.textColor() : super.bgndColor();
+	}
+
+	textColor() {
+		return this.isEnabled() ? ((this.focus || this.clicked) ? super.bgndColor() : super.textColor()) : BUTTON_DISABLED;
 	}
 
 	under(x, y) {
@@ -213,9 +274,11 @@ let ButtonMixin = (superclass) => class extends superclass {
 	}
 	
 	checkHold(x, y) {
+		this.focus = this.under(x, y);
+		if (!this.focus) this.down = false;
 		if (!(this.holdable && this.down && this.isEnabled())) return
 
-		if (this.under(x, y)) {
+		if (this.focus) {
 			this.holdTicks += 1;
 			if (this.holdTicks === 15) {
 				this.click();
@@ -253,6 +316,18 @@ let ButtonMixin = (superclass) => class extends superclass {
 	}
 };
 
+function drawBorderedRect(x, y, w, h, fillColor, borderColor) {
+	ctx.fillStyle = fillColor;
+	ctx.strokeStyle = borderColor;
+
+	ctx.lineJoin = "round";
+	var cornerRadius = Math.min(w, h) * 0.1;
+	ctx.lineWidth = cornerRadius;
+
+	ctx.strokeRect(x+(cornerRadius/2), y+(cornerRadius/2), w-cornerRadius, h-cornerRadius);
+	ctx.fillRect(x+(cornerRadius/2), y+(cornerRadius/2), w-cornerRadius, h-cornerRadius);	
+}
+
 class Button extends ButtonMixin(TextElement) {
 	constructor(text, size, callback, uncallback) {
 		super(text, size);
@@ -260,6 +335,7 @@ class Button extends ButtonMixin(TextElement) {
 		this.callback = callback;
 		this.uncallback = uncallback;
 
+		this.center = true;
 		this.margin = 20;
 		this.border = true;
 		this.holdable = false;
@@ -279,81 +355,19 @@ class Button extends ButtonMixin(TextElement) {
 	draw() {
 		if (!this.visible) { return; }
 
-		if (this.focus || this.clicked) {
-			ctx.strokeStyle = RED;
-			ctx.fillStyle = RED;
-		} else if (this.isEnabled()) {
-			ctx.strokeStyle = WHITE;
-			ctx.fillStyle = WHITE;
-		} else {
-			ctx.strokeStyle = "grey";
-			ctx.fillStyle = "grey";
-		}
+		var dims = this.buttonDims();
+		
+		drawBorderedRect(dims.left, dims.top, dims.width, dims.height, this.bgndColor(), this.borderColor());
+ 
+		ctx.strokeStyle = this.textColor();
+		ctx.fillStyle = this.textColor();
 		ctx.font = (this.size * r) + "px " + this.font;
-	
-		var buttonDims = this.buttonDims();
-		ctx.lineWidth = this.border * r;
-		ctx.lineJoin = "round";
-		if (this.border) {
-			ctx.strokeRect(buttonDims.left, buttonDims.top, buttonDims.width, buttonDims.height);
-		}
-
 		ctx.textBaseline = "center";
 		ctx.textAlign = this.align;
 
-		ctx.fillText(this.text, this.x(), this.y());
-	}
-}
-
-class ImgBackButton extends ButtonMixin(TextElement) {
-	constructor(text, size, callback, uncallback) {
-		super(text, size);
-
-		this.callback = callback;
-		this.uncallback = uncallback;
-
-		this.margin = 20;
-		this.border = true;
-		this.holdable = false;
-		this.holdTicks = 0;
-	}
-
-	setBorder(val) {
-		if (val !== undefined) this.border = val;
-		return this;
-	}
-
-	setMargin(val) {
-		if (val !== undefined) this.margin = val;
-		return this;
-	}
-
-	draw() {
-		if (!this.visible) { return; }
-
-		if (this.focus || this.clicked) {
-			ctx.strokeStyle = RED;
-			ctx.fillStyle = RED;
-		} else if (this.isEnabled()) {
-			ctx.strokeStyle = WHITE;
-			ctx.fillStyle = WHITE;
-		} else {
-			ctx.strokeStyle = "grey";
-			ctx.fillStyle = "grey";
-		}
-		ctx.font = (this.size * r) + "px " + this.font;
-	
-		var buttonDims = this.buttonDims();
-		ctx.lineWidth = this.border * r;
-		ctx.lineJoin = "round";
-		if (this.border) {
-			ctx.strokeRect(buttonDims.left, buttonDims.top, buttonDims.width, buttonDims.height);
-		}
-
-		ctx.textBaseline = "center";
-		ctx.textAlign = this.align;
-
-		ctx.fillText(this.text, this.x(), this.y());
+		var offW = dims.width / 2;
+		var offH = dims.height * 0.5 + this.textDims().height / 2; 
+		ctx.fillText(this.text, dims.left + offW, dims.top + offH);
 	}
 }
 
@@ -415,6 +429,11 @@ class ImageButton extends ButtonMixin(ImageElement) {
 		this.callback = callback;
 		this.uncallback = uncallback;
 
+		this.background = undefined;
+		this.margin = 0;
+		this.text = undefined;
+		this.size = 20;
+
 		// On image
 		this.on_img = on_img;
 		this.img = on_img;
@@ -424,10 +443,12 @@ class ImageButton extends ButtonMixin(ImageElement) {
 	draw() {
 		if (!this.visible) { return; }
 
-		var dims = this.dims();
-
 		var img = this.uncallback && this.clicked ? this.off_img : this.on_img;
-		ctx.drawImage(img.img, this.x(), this.y(), dims.width, dims.height);
+		var dims = this.buttonDims();
+
+		if (this.bColor) drawBorderedRect(dims.left, dims.top, dims.width, dims.height, this.bgndColor(), this.borderColor());
+
+		ctx.drawImage(img.img, dims.left + this.margin, dims.top + this.margin, dims.width - this.margin * 2, dims.height - this.margin * 2);
 	}
 }
 

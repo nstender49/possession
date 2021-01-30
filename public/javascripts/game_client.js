@@ -48,7 +48,7 @@ DEMON_TIMER = "demon timer";
 SOUND_ON = "sound_on";
 SOUND_OFF = "sound_off";
 BACK = "background";
-LEATHER = "leather";
+BUTTON = "button";
 TABLE = "table";
 FAIL_X = "fail_x";
 VOTED = "voted";
@@ -67,7 +67,7 @@ IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
 IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
 
 IMAGES[BACK] = new PreLoadedImage("/images/background.jpg");
-IMAGES[LEATHER] = new PreLoadedImage("/images/red_leather.jpg");
+IMAGES[BUTTON] = new PreLoadedImage("/images/button.png");
 IMAGES[TABLE] = new PreLoadedImage("/images/table.png");
 IMAGES[FAIL_X] = new PreLoadedImage("/images/fail_x.png");
 IMAGES[VOTED] = new PreLoadedImage("/images/voted.png");
@@ -221,8 +221,8 @@ function initLabels() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	// Main menu
 	labels["title"] = new Label("POSSESSION", 80).setPosition(0.5, 0.4);
-	buttons["make table"] = new Button("Make Table", 80, makeTable).setPosition(0.5, 0.6);
-	buttons["join table"] = new Button(" Join Table ", 80, joinTable).setPosition(0.5, 0.85);
+	buttons["make table"] = new Button("Make Table", 60, makeTable).setPosition(0.5, 0.55).setDims(0.445, 0.14).setCenter(true);
+	buttons["join table"] = new Button("Join Table", 60, joinTable).setPosition(0.5, 0.80).setDims(0.445, 0.14).setCenter(true);
 	drawGroups["main menu"] = new DrawGroup([
 		labels["title"],
 		buttons["make table"],
@@ -231,12 +231,11 @@ function initLabels() {
 
 	// Table
 	labels["table_img"] = new ImageLabel(IMAGES[TABLE]).setCenter(true).setPosition(0.3, 0.5).setDims(0.4)
-	labels["table pentagram"] = new ImageLabel(IMAGES[PENTAGRAM_GRAY]).setCenter(true).setPosition(0.3, 0.5).setDims(0.4);
 
-	buttons["leave table"] = new Button("Leave", 30, leaveTable).setPosition(0.3, 0.6);
-	buttons["begin game"] = new Button("Begin", 30, doMove.bind(null, BEGIN)).setPosition(0.3, 0.4);
-	buttons["change avatar"] = new Button("Change Avatar", 20, enableOverlay.bind(null, OVERLAY_AVATAR)).setPosition(0.3, 0.7);
-	buttons["finish game"] = new Button("Finish", 30, doMove.bind(null, FINISH)).setPosition(0.3, 0.4);
+	buttons["leave table"] = new Button("Leave Table", 15, leaveTable).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
+	buttons["begin game"] = new Button("Start Game", 15, doMove.bind(null, BEGIN)).setPosition(0.3, 0.4).setDims(0.15, 0.07).setCenter(true);
+	buttons["change avatar"] = new Button("Change Avatar", 15, enableOverlay.bind(null, OVERLAY_AVATAR)).setPosition(0.3, 0.7).setDims(0.15, 0.07).setCenter(true);
+	buttons["finish game"] = new Button("Finish Game", 15, doMove.bind(null, FINISH)).setPosition(0.3, 0.4).setDims(0.15, 0.07).setCenter(true);
 
 	// Timers
 	labels["move timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setPosition(0.28, 0.755).setDims(0.015);
@@ -254,11 +253,12 @@ function initLabels() {
 		buttons[item] = new ImageButton(IMAGES[item], doMove.bind(null, item)).setCenter(true).setAbsolute(true);
 		drawGroups["items"].add(buttons[item]);
 	}
-	buttons[PASS] = new Button("Pass", 15, doMove.bind(null, PASS)).setPosition(0.3, 0.55);
+	buttons[PASS] = new Button("Pass", 15, doMove.bind(null, PASS)).setPosition(0.3, 0.525).setDims(0.075, 0.05).setCenter(true);
+	
 	drawGroups["items"].add(buttons[PASS]);
 
 	// Planning phase
-	buttons["ready"] = new Button("Ready", 30, doMove.bind(null, READY)).setPosition(0.3, 0.6);
+	buttons["ready"] = new Button("Advance Round", 15, doMove.bind(null, READY)).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
 
 	// Voting phase
 	labels[WATER] = new ImageLabel(IMAGES[WATER]).setCenter(true);
@@ -273,9 +273,9 @@ function initLabels() {
 	]);
 
 	// Chat
-	buttons["submit chat"] = new Button("↵", 15, submitChat);
+	buttons["submit chat"] = new Button("↵", 15, submitChat).setDims(undefined, 0.05).setCenter(true);
 	labels["chat title"] = new Label("Player Chat", 15).setPosition(0.775, 0.05);
-	buttons["next chat"] = new Button(">", 15, cycleChat).setPosition(0.935, 0.05);
+	buttons["next chat"] = new Button(">", 15, cycleChat).setDims(undefined, 0.05);
 	drawGroups["chat"] = new DrawGroup([
 		buttons["submit chat"],
 		labels["chat title"],
@@ -291,11 +291,11 @@ function initLabels() {
 	]);
 
 	// Fast chat buttons
-	buttons["fast vote yes"] = new Button("Vote Yes | Y", 10, fastChat.bind(null, "vote yes")).setPosition(0.355, 0.88).setAlign("left").setMargin(10);
-	buttons["fast vote no"] = new Button("Vote No | N", 10, fastChat.bind(null, "vote no")).setPosition(0.424, 0.88).setAlign("left").setMargin(10);
-	buttons["fast suspect"] = new Button("Suspect | S", 10, fastChat.bind(null, "suspect")).setPosition(0.491, 0.88).setAlign("left").setMargin(10);
-	buttons["fast validate"] = new Button("Validate | V", 10, fastChat.bind(null, "validate")).setPosition(0.556, 0.88).setAlign("left").setMargin(10);
-	buttons["fast go along"] = new Button("Go Along | G", 10, fastChat.bind(null, "go along")).setPosition(0.625, 0.88).setAlign("left").setMargin(10);
+	buttons["fast vote yes"] = new Button("Vote Yes", 10, fastChat.bind(null, "vote yes")).setDims(0.06, 0.04).setPosition(0.39, 0.875);
+	buttons["fast vote no"] = new Button("Vote No", 10, fastChat.bind(null, "vote no")).setDims(0.06, 0.04).setPosition(0.455, 0.875);
+	buttons["fast suspect"] = new Button("Suspect", 10, fastChat.bind(null, "suspect")).setDims(0.06, 0.04).setPosition(0.52, 0.875);
+	buttons["fast validate"] = new Button("Validate", 10, fastChat.bind(null, "validate")).setDims(0.06, 0.04).setPosition(0.585, 0.875);
+	buttons["fast go along"] = new Button("Go Along", 10, fastChat.bind(null, "go along")).setDims(0.06, 0.04).setPosition(0.65, 0.875);
 	drawGroups["fast chat"] = new DrawGroup([
 		buttons["fast vote yes"],
 		buttons["fast vote no"],
@@ -303,12 +303,15 @@ function initLabels() {
 		buttons["fast validate"],
 		buttons["fast go along"],
 	])
+	for (var item of ITEMS) {
+		buttons[`fast chat ${item}`] = new ImageButton(IMAGES[item], fastChat.bind(null, item)).setDims(0.04).setBackground(BUTTON_BACKGROUND).setMargin(5);
+	}
 
 	// Game settings (bottom bar)
-	labels["table"] = new Label("Table {}", 15).setPosition(0.01, 0.99).setAlign("left").setData("????");
-	buttons["howto"] = new Button("How To Play", 14, enableOverlay.bind(null, OVERLAY_HOWTO)).setPosition(0.15, 0.99).setMargin(5);
+	labels["table"] = new Label("Table {}", 15).setPosition(0.01, 0.98).setAlign("left").setData("????");
+	buttons["howto"] = new Button("How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO)).setPosition(0.15, 0.97).setDims(0.09, 0.04).setCenter(true);
 	labels["error msg"] = new Label("", 20).setPosition(0.5, 0.98);
-	labels["version"] = new Label("", 15).setPosition(0.99, 0.99).setAlign("right").setFont("monospace");
+	labels["version"] = new Label("", 15).setPosition(0.99, 0.98).setAlign("right").setFont("monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
 		labels["table"],
 		buttons["howto"],
@@ -391,8 +394,8 @@ function setChatHeight() {
 	if (!thePlayer || (thePlayer.isDemon && buttons["submit chat"].yy === 0.3325) || (thePlayerIsPossessed && buttons["submit chat"].yy === 0.6825)) return;
 	if (thePlayer.isDemon) {
 		labels["chat title"].setPosition(0.885, 0.23);
-		buttons["next chat"].setPosition(0.965, 0.23);
-		buttons["submit chat"].setPosition(0.67, 0.93);
+		buttons["next chat"].setPosition(0.965, 0.225);
+		buttons["submit chat"].setPosition(0.67, 0.925);
 
 		for (var config of ELEM_CONFIGS) {
 			if (["player-chat", "game-log"].includes(config.name)) {
@@ -410,7 +413,7 @@ function setChatHeight() {
 		}
 	} else {
 		labels["chat title"].setPosition(0.775, 0.05); 
-		buttons["next chat"].setPosition(0.935, 0.05);
+		buttons["next chat"].setPosition(0.935, 0.0425);
 
 		if (thePlayerIsPossessed) {
 			for (var config of ELEM_CONFIGS) {
@@ -425,7 +428,7 @@ function setChatHeight() {
 					config.w = 0.32;
 					config.h = 0.05;
 				}
-				buttons["submit chat"].setPosition(0.935, 0.6825);
+				buttons["submit chat"].setPosition(0.935, 0.675);
 			}
 		} else {
 			for (var config of ELEM_CONFIGS) {
@@ -440,7 +443,7 @@ function setChatHeight() {
 					config.w = 0.32;
 					config.h = 0.05;
 				}
-				buttons["submit chat"].setPosition(0.935, 0.9325);
+				buttons["submit chat"].setPosition(0.935, 0.925);
 			}
 		}
 	}
@@ -785,8 +788,12 @@ function updateTable(table) {
 			// Make button avatars for players if they don't exist
 			if (!buttons[player.name]) {
 				buttons[player.name] = new ImageButton(PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.name)).setCenter(true).setAbsolute(true);
-				buttons[`fast chat ${player.name}`] = new Button(player.name, 10, fastChat.bind(null, `<c>${player.name}</c>`));
-
+				var fastButton = new Button(player.name, 10, fastChat.bind(null, `<c>${player.name}</c>`)).setDims(0.045, 0.04);
+				console.log(`ADDING BUTTON FOR ${player.name}: ${fastButton.textDims().width} ${fastButton.buttonDims().width}`);
+				if (fastButton.textDims().width > fastButton.buttonDims().width * 0.75) {
+					fastButton.text = player.name.substring(0, Math.floor(player.name.length * fastButton.buttonDims().width * 0.75 / fastButton.textDims().width));
+				}
+				buttons[`fast chat ${player.name}`] = fastButton;
 				// TODO: remove deleted players...
 			}
 		}

@@ -58,11 +58,7 @@ function handleMouseMove(event) {
 				$("#game-canvas").css("cursor", "pointer");
 				clickCursor = true;
 			}
-			button.focus = true;
 			return;
-		} else {
-			button.down = false;
-			button.focus = false;
 		}
 	}
 
@@ -191,7 +187,7 @@ function handleResize() {
 	}
 	// Autofill debug fields
 	if (DEBUG) {
-		document.getElementById("player-name").value = "P" + Math.floor(Math.random() * 100);
+		document.getElementById("player-name").value = "Player" + Math.floor(Math.random() * 100);
 		document.getElementById("game-code").value = "AAAA";
 	}
 	
@@ -230,8 +226,11 @@ function resizeCanvas(w, h) {
 //////////  Drawing  \\\\\\\\\\
 
 function tick() {
-	ctx.drawImage(IMAGES[BACK].img, 0, 0, window.innerWidth, window.innerHeight);
-	// drawRect(BACKGROUND_COLOR, 0, 0, 1, 1);
+	if (IMAGES[BACK].loaded) {
+		ctx.drawImage(IMAGES[BACK].img, 0, 0, window.innerWidth, window.innerHeight);
+	} else {
+		drawRect(BACKGROUND_COLOR, 0, 0, 1, 1);
+	}
 	if (gameState === INIT) return;
 
 	// Check for holding buttons.
@@ -516,23 +515,22 @@ function drawDemonControlPanel() {
 	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.5, 0.23, 20);
 
 	// Items
-	drawText("Tools", 0.07, 0.23, 15);
-	var panelH = 0.6;
-	drawRect("#333333", 0.02, 0.25, 0.12, panelH);
-	var margin = 0.04;
-	var h = Math.min(0.12, (panelH - margin * (ITEMS.length + 1)) / ITEMS.length);
-	for (var i = 0; i < ITEMS.length; i++) {
-		var dx = 0.09 * cvW + wOff;
-		var dy =(0.25 + h * 0.5 + margin * (i + 1) + h * i) * cvH + hOff;
-		drawItemButton(ITEMS[i], dx, dy, h);
-	}
 	if (gameState === TABLE_DAY) {
 		drawGroups["items"].enable();
 	} else {
 		drawGroups["items"].show();
 	}
 	buttons[PASS].disable();
-	drawGroups["items"].draw();
+	drawText("Tools", 0.07, 0.23, 15);
+	var panelH = 0.6;
+	drawRect("#333333", 0.02, 0.25, 0.12, panelH);
+	var margin = 0.01;
+	var h = (panelH - margin * (ITEMS.length + 1)) / ITEMS.length
+	for (var i = 0; i < ITEMS.length; i++) {
+		var dx = 0.08 * cvW + wOff;
+		var dy =(0.25 + h * 0.5 + margin * (i + 1) + h * i) * cvH + hOff;
+		drawItemButton(ITEMS[i], dx, dy, h);
+	}
 
 	// Drawing the demon chat panels.
 	var numToPossess = Math.ceil((theTable.players.length - 1) / 2);
@@ -557,19 +555,26 @@ function drawDemonControlPanel() {
 			drawText(possessedPlayers[i], dx + w / 2, dy + nameHeight * 0.75, 15, undefined, undefined, undefined, undefined, "black");
 		} else {
 			drawRect("#333333", dx, dy, dw, dh);
-			drawImage(IMAGES[PENTAGRAM_GRAY], dx + dw * 0.5, dy + dh * 0.5, dw / 2, false, true);
+			new ImageLabel(IMAGES[PENTAGRAM_GRAY]).setPosition(dx + dw * 0.5, dy + dh * 0.5).setDims(dw / 2).setCenter(true).draw();
 		}
+	}
+	// Item fast chat buttons
+	var dx = 0.3;
+	for (var item of ITEMS) {
+		buttons[`fast chat ${item}`].setPosition(dx, 0.875).enable().enable().draw();
+		dx -= 0.05;
 	}
 	// Position player quick chat buttons
 	var dx = 0.72;
-	var dy = 0.885;
+	var dy = 0.875;
 	for (var player of theTable.players) {
-		buttons[`fast chat ${player.name}`].setPosition(dx, dy).setColor(player.color).enable().draw();
-		if (dy === 0.935) {
-			dx += 0.07;
-			dy = 0.885;
+		if (player.isDemon) continue;
+		buttons[`fast chat ${player.name}`].setPosition(dx, dy).setBackground(player.color).enable().draw();
+		if (dy === 0.925) {
+			dx += 0.05;
+			dy = 0.875;
 		} else {
-			dy = 0.935;
+			dy = 0.925;
 		}
 	}
 
@@ -585,7 +590,6 @@ function drawTable() {
 
 	// Draw table
 	labels["table_img"].draw();
-	labels["table pentagram"].draw();
 
 	// Draw message.
 	var msg = theTable.message;
@@ -628,10 +632,12 @@ function drawTableItems() {
 	}
 }
 
-function drawItemButton(item, x, y, itemHeight) {
-	buttons[item].setPosition(x, y).setDims(false, itemHeight);
-	drawText(`${Math.max(0, theTable.resources[item] || 0)} x `, x - itemHeight * 0.25 * cvW, y - itemHeight * 0.2 * cvH, 15, "right", true); 
-	if (thePlayer.isDemon) drawCircle(interfereUses[item] > 0 ? "green" : "red", x - itemHeight * 0.35 * cvW, y + itemHeight * 0.2 * cvH, 10);
+function drawItemButton(item, x, y, size) {
+	var num = Math.max(0, theTable.resources[item] || 0);
+	if (!num) buttons[item].disable().show();
+	buttons[item].setPosition(x, y).setDims(false, size).setBackground(BUTTON_BACKGROUND).setMargin(10).draw();
+	new Label(`${num} x `, 12).setPosition(x - size * 0.075 * cvW, y - size * 0.275 * cvH).setAbsolute(true).setColor(buttons[item].textColor()).setAlign("right").draw();
+	if (thePlayer.isDemon) drawCircle(interfereUses[item] > 0 ? "green" : "red", x - size * 0.2 * cvW, y + size * 0.3 * cvH, 7.5);
 }
 
 function drawPlayers() {
@@ -655,9 +661,11 @@ function drawPlayers() {
 
 function drawPlayerPad(player, x, y, r) {
 	// Draw pentagram under the player pad if player is possessed for player and demon.
+	var pent = IMAGES[PENTAGRAM_GRAY];
 	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
-		drawImage(IMAGES[PENTAGRAM], x, y, r * 2.75 / cvW, false, true, true);
+		pent = IMAGES[PENTAGRAM];
 	}
+	drawImage(pent, x, y, r * 2.75 / cvW, false, true, true);
 	drawCircle(player.color, x, y, r);
 
 	// Move player avatar/button to position.
@@ -814,12 +822,13 @@ var hand, canvas, ctx, cvW, cvH;
 var clickCursor = false,
 	aspect = 16 / 10,
 	ERROR_DURATION_SEC = 2.5,
-	BACKGROUND_COLOR = "black",
+	BACKGROUND_COLOR = "#000000",
 	LABEL_FONT = "Tahoma",
-	FELT_COLOR = "#35654d",
-	LEDGER_COLOR = "#FDFD96",
-	RED = "red",
-	WHITE = "white";
+	WHITE = "#ffffff",
+	BUTTON_BACKGROUND = "#810000",
+	BUTTON_BORDER = "#5c0000",
+	BUTTON_TEXT = "#ffffff",
+	BUTTON_DISABLED = "gray";
 
 var VERSION = "v0.1.2";
 var ELEM_CONFIGS = [
