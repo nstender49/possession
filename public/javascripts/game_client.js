@@ -11,7 +11,8 @@ const TABLE_DAY = "table day";
 const TABLE_SECONDING = "table seconding";
 const TABLE_VOTING = "table voting"; 
 const TABLE_SELECT = "table selecting player";
-const TABLE_INTERFERE = "table demon interference"
+const TABLE_INTERFERE = "table demon interference";
+const TABLE_ROD_INTERPRET = "table rod interpret";
 const TABLE_DISPLAY = "table display result";
 const TABLE_END = "table game over";
 
@@ -32,17 +33,19 @@ const BOARD = "BOARD";
 const WATER = "WATER";
 const ROD = "ROD";
 const EXORCISM = "EXORCISM";
+const SALT = "SALT";
+const SMUDGE = "SMUDGE";
 
-const ITEMS = [WATER, BOARD, ROD, EXORCISM];
+const ITEMS = [WATER, BOARD, ROD, EXORCISM, SALT, SMUDGE];
 
 const SELECT = "SELECT";
 const INTERFERE = "INTERFERE";
+const INTERPRET = "INTERPRET";
 const FINISH = "FINISH";
 
 // Timers
 ROUND_TIMER = "round timer";
 MOVE_TIMER = "move timer";
-DEMON_TIMER = "demon timer";
 
 // Sound 
 SOUND_ON = "sound_on";
@@ -64,6 +67,8 @@ IMAGES[WATER] = new PreLoadedImage("/images/water.png");
 IMAGES[BOARD] = new PreLoadedImage("/images/planchette.png");
 IMAGES[ROD] = new PreLoadedImage("/images/rod.png");
 IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
+IMAGES[SALT] = new PreLoadedImage("/images/salt.png");
+IMAGES[SMUDGE] = new PreLoadedImage("/images/smudge_stick.png");
 IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
 
 IMAGES[BACK] = new PreLoadedImage("/images/background.jpg");
@@ -99,9 +104,10 @@ var newTableSettings = {
 	discussTime: 30,
 	moveTime: 30,
 	secondTime: 10,
-	selectTime: 15,
+	selectTime: 60,
 	voteTime: 30,
 	interfereTime: 10,
+	rodTime: 10,
 };
 
 // Game settings
@@ -115,13 +121,14 @@ var drawGroups = [];
 var sounds = [];
 
 // Game state
-var gameState, theTable, thePlayer, thePlayerIsPossessed;
+var gameState, theTable, thePlayer, thePlayerIsPossessed, rodResult;
 // Demon state
 var possessedPlayers, interfereUses, selectedPlayer, chatIsDemon;
 var demonChats = [];
 
 // Display
 var timers = [];
+
 // Overlay
 var overlay, popupMessage, howtoPage;
 const HOW_TO_PAGES = 2;
@@ -162,6 +169,10 @@ socket.on("pop up", function(msg) {
 socket.on("possession", function(isPossessed) {
 	thePlayerIsPossessed = isPossessed
 	setChatHeight();
+});
+
+socket.on("rod", function(isPossessed) {
+	rodResult = isPossessed;
 });
 
 socket.on("possessed players", function(players) {
@@ -260,17 +271,26 @@ function initLabels() {
 	buttons["ready"] = new Button("Advance Round", 15, doMove.bind(null, READY)).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
 
 	// Voting phase
-	labels[WATER] = new ImageLabel(IMAGES[WATER]).setCenter(true);
-	labels[BOARD] = new ImageLabel(IMAGES[BOARD]).setCenter(true);
-	labels[ROD] = new ImageLabel(IMAGES[ROD]).setCenter(true);
-	labels[EXORCISM] = new ImageLabel(IMAGES[EXORCISM]).setCenter(true);
 	buttons["vote yes"] = new Button("Yes", 20, doVote.bind(null, true)).setDims(0.05, 0.05).setPosition(0.25, 0.6).setCenter(true).setSticky(true);
 	buttons["vote no"] = new Button("No", 20, doVote.bind(null, false)).setDims(0.05, 0.05).setPosition(0.35, 0.6).setCenter(true).setSticky(true);
 	drawGroups["voting"] = new DrawGroup([
 		buttons["vote yes"],
 		buttons["vote no"],
 	]);
+	for (var item of ITEMS) {
+		labels[item] = new ImageLabel(IMAGES[item]).setPosition(0.3, 0.35).setDims(0.1).setCenter(true);
+	}
 
+	// Rod interpret phase
+	buttons["rod show"] = new Button("Show", 20, doInterpret.bind(null, true)).setDims(0.06, 0.05).setPosition(0.2, 0.6).setCenter(true).setSticky(true);
+	buttons["rod hide"] = new Button("Hide", 20, doInterpret.bind(null, undefined)).setDims(0.06, 0.05).setPosition(0.3, 0.6).setCenter(true).setSticky(true);
+	buttons["rod lie"] = new Button("Lie", 20, doInterpret.bind(null, false)).setDims(0.06, 0.05).setPosition(0.4, 0.6).setCenter(true).setSticky(true);
+	drawGroups["rod"] = new DrawGroup([
+		buttons["rod show"],
+		buttons["rod hide"],
+		buttons["rod lie"],
+	]);
+	
 	// Chat
 	buttons["submit chat"] = new Button("↵", 15, submitChat).setDims(undefined, 0.05).setCenter(true);
 	labels["chat title"] = new Label("Player Chat", 15).setPosition(0.775, 0.05);
@@ -283,8 +303,8 @@ function initLabels() {
 
 	// Demon / interfere
 	labels["interfere"] = new Label("Interfere:", 20).setPosition(0.62, 0.23);
-	buttons["interfere yes"] = new Button("Yes", 20, doInterfere.bind(null, true)).setDims(0.05, 0.05).setPosition(0.695, 0.22).setCenter(true);
-	buttons["interfere no"] = new Button("No", 20, doInterfere.bind(null, false)).setDims(0.05, 0.05).setPosition(0.75, 0.22).setCenter(true);
+	buttons["interfere yes"] = new Button("Yes", 20, doInterfere.bind(null, true)).setDims(0.05, 0.05).setPosition(0.695, 0.22).setCenter(true).setSticky(true);
+	buttons["interfere no"] = new Button("No", 20, doInterfere.bind(null, false)).setDims(0.05, 0.05).setPosition(0.75, 0.22).setCenter(true).setSticky(true);
 	drawGroups["interfere"] = new DrawGroup([
 		labels["interfere"],
 		buttons["interfere yes"],
@@ -345,6 +365,17 @@ function initLabels() {
 		buttons[`color ${color}`] = new ShapeButton(color, changeColor.bind(null, color)).setAbsolute(true).setOverlay();
 		drawGroups["avatar selection"].draws.push(buttons[`color ${color}`]);
 	}
+
+	// Salt
+	for (var i = 0; i < 12; i++) {
+		buttons[`salt ${i}`] = new ImageButton(IMAGES[SALT], updateSalt.bind(null, i)).setDims(0.025).setAbsolute(true).setCenter(true);
+	}
+	buttons["submit salt"] = new Button("Submit", 20, doSalt).setDims(0.075, 0.05).setPosition(0.25, 0.6).setCenter(true);
+	buttons["clear salt"] = new Button("Clear", 20, updateSalt).setDims(0.075, 0.05).setPosition(0.35, 0.6).setCenter(true);
+	drawGroups["salt"] = new DrawGroup([
+		buttons["submit salt"],
+		buttons["clear salt"],
+	]);
 
 	// Sounds
 	// sounds["count"] = new sound("/sounds/racestart.wav");
@@ -509,8 +540,8 @@ function addMarkedUpContent(item, content) {
 		if (tag.startsWith("/")) {
 			switch (tag.substring(1).toLowerCase()) {
 				case "c":
-					var player = getPlayerByName(lastText);
-					if (player) stack[stack.length - 1].style.color = getPlayerByName(lastText).color;
+					var player = getPlayerByName(lastText.trim());
+					if (player) stack[stack.length - 1].style.color = player.color;
 					break;
 				case "b": 
 					stack[stack.length -1].style.fontWeight = "bold";
@@ -551,14 +582,13 @@ function formatTimer(time) {
 }
 
 function setTimer(timer) {
-	var label = timer === ROUND_TIMER ? ROUND_TIMER : MOVE_TIMER;
-	if (timers[label]) clearTimeout(timers[label]);
+	if (timers[timer]) clearTimeout(timers[timer]);
 	if (!theTable || theTable.timers[timer] === undefined || Date.now() > theTable.timers[timer]) {
-		drawGroups[label].disable();
+		drawGroups[timer].disable();
 	} else {
-		drawGroups[label].show();
-		labels[label].setData(formatTimer(theTable.timers[timer]));
-		timers[label] = Number(setTimeout(setTimer.bind(null, timer), 1000));
+		drawGroups[timer].show();
+		labels[timer].setData(formatTimer(theTable.timers[timer]));
+		timers[timer] = Number(setTimeout(setTimer.bind(null, timer), 1000));
 	}
 }
 
@@ -623,6 +653,15 @@ function changeState(state) {
 				drawGroups["voting"].enable();
 			}
 			break;
+		case TABLE_SELECT:
+			if (theTable.currentMove.type === SALT) {
+				updateSalt();
+				drawGroups["salt"].enable();
+			}
+			break;
+		case TABLE_ROD_INTERPRET:
+			if (thePlayer.name === theTable.currentMove.playerName) drawGroups["rod"].enable();
+			break;
 		case TABLE_INTERFERE:
 			if (thePlayer.isDemon && interfereUses[theTable.currentMove.type] > 0) {
 				drawGroups["interfere"].enable();
@@ -649,9 +688,43 @@ function doVote(vote) {
 	socket.emit("do move", {type: gameState === TABLE_SECONDING ? SECOND : VOTE, vote: vote});
 }
 
+function doInterpret(vote) {
+	buttons["rod show"].clicked = vote === true;
+	buttons["rod hide"].clicked = vote === undefined;
+	buttons["rod lie"].clicked = vote === false;
+	socket.emit("do move", {type: INTERPRET, choice: vote});
+}
+
 function doInterfere(vote) {
-	drawGroups["interfere"].disable();
+	buttons[vote ? "interfere no" : "interfere yes"].clicked = false;
 	socket.emit("do move", {type: INTERFERE, vote: vote});
+}
+
+function doSalt() {
+	if (theTable.saltLine.start === undefined || theTable.saltLine.end === undefined) return; 
+	socket.emit("do move", {type: SELECT});
+}
+
+function updateSalt(pos) {
+	if (pos === undefined) {
+		theTable.saltLine.start = undefined;
+		theTable.saltLine.end = undefined;
+		console.log("ENABLE SALT!!!");
+		for (var i = 0; i < theTable.players.length - 1; i++) {
+			buttons[`salt ${i}`].enable();
+		}
+	} else if (theTable.saltLine.start !== undefined) {
+		theTable.saltLine.end = pos;
+		for (var i = 0; i < theTable.players.length - 1; i++) {
+			buttons[`salt ${i}`].disable();
+		}
+	} else {
+		theTable.saltLine.start = pos;
+		for (var i = -1; i < 2; i++) {
+			buttons[`salt ${(pos + i).mod(theTable.players.length - 1)}`].disable();
+		}
+	}
+	socket.emit("do move", {type: SALT, line: theTable.saltLine});
 }
 
 function selectPlayer(name) {

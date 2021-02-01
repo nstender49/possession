@@ -228,12 +228,15 @@ class Label extends TextElement {
 			ctx.globalAlpha = this.opacity;
 		}
 
-		ctx.fillStyle = this.color;
+		ctx.strokeStyle = "black";
+		ctx.fillStyle = "white";
+		ctx.lineWidth = (this.size / 30) * r;
 		ctx.font = (this.size * r) + "px " + this.font;	
 		ctx.textBaseline = "center";
 		ctx.textAlign = this.align;
 
 		ctx.fillText(this.text, this.x(), this.y());
+		ctx.strokeText(this.text, this.x(), this.y());
 
 		if (this.opacity < 1) ctx.restore();
 	}

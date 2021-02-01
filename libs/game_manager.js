@@ -33,12 +33,16 @@ const ITEM_PROPOSE_MSG = {
 	WATER: "use holy water",
 	ROD: "use the divining rod",
 	EXORCISM: "perform an exorcism",
+	SALT: "draw a salt line",
+	SMUDGE: "use a smudge stick",
 };
 const ITEM_USE_MSG = {
 	BOARD: "consulting with the spirits about",
 	WATER: "using holy water on",
-	ROD: "testing the purity of",
+	ROD: "using the divining rod to test",
 	EXORCISM: "performing an exorcism on",
+	SALT: "waiting for the salt line to take effect",
+	SMUDGE: "using a smudge stick to ward"
 };
 
 const PLAYER_COLORS = [
@@ -51,7 +55,6 @@ const AVATAR_COUNT = 50;
 // Timers
 ROUND_TIMER = "round timer";
 MOVE_TIMER = "move timer";
-DEMON_TIMER = "demon timer";
 
 // Game states
 const INIT = "init";
@@ -63,7 +66,8 @@ const TABLE_DAY = "table day";
 const TABLE_SECONDING = "table seconding";
 const TABLE_VOTING = "table voting"; 
 const TABLE_SELECT = "table selecting player";
-const TABLE_INTERFERE = "table demon interference"
+const TABLE_INTERFERE = "table demon interference";
+const TABLE_ROD_INTERPRET = "table rod interpret";
 const TABLE_DISPLAY = "table display result";
 const TABLE_END = "table game over";
 
@@ -78,9 +82,13 @@ const BOARD = "BOARD";
 const WATER = "WATER";
 const ROD = "ROD";
 const EXORCISM = "EXORCISM";
-const ITEMS = [BOARD, WATER, ROD, EXORCISM];
+const SALT = "SALT";
+const SMUDGE = "SMUDGE";
+const ITEMS = [BOARD, WATER, ROD, EXORCISM, SALT, SMUDGE];
+
 const SELECT = "SELECT";
 const INTERFERE = "INTERFERE";
+const INTERPRET = "INTERPRET";
 const FINISH = "FINISH";
 
 var logFull = true;
@@ -375,7 +383,6 @@ function clearTimer(table) {
 	if (table.timerId) clearTimeout(table.timerId);
 	table.timerId = undefined;
 	table.timers[MOVE_TIMER] = false;
-	table.timers[DEMON_TIMER] = false;
 }
 
 function clearRoundTimer(table) {
@@ -439,18 +446,9 @@ function handleDemonMove(table, player, move) {
 			if (move.type !== INTERFERE) return result;
 			var game = getGameByCode(table.code);
 			if (!game.interfereUses[table.currentMove.type]) return;
-
-			if (move.vote) { 
-				game.anyInterfere = true;
-				game.doInterfere = true;
-				game.interfereUses[table.currentMove.type] -= 1;
-			}
-			var demonPlayer = getPlayerBySessionId(table.demonId);
-			demonPlayer.socket.emit("update interfere", game.interfereUses);
-
+			game.doInterfere = move.vote;
 			result.handled = true;
 			// We do not advance round, this is handled by timer
-
 			break;
 		case TABLE_DISPLAY:
 			break;
@@ -483,9 +481,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			result.advance = true;
 			break;
 		case TABLE_DAY:
-			if (![PASS, BOARD, WATER, ROD, EXORCISM].includes(move.type)) {
-				return result;
-			}
+			if (!(move.type === PASS || ITEMS.includes(move.type))) return result;
 			// If using turn order, only current player can move.
 			if (table.settings.turnOrder && currentPlayer(table).name !== tablePlayer.name) return result;
 			// Player has already moved this round.
@@ -499,8 +495,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 				type: move.type,
 				playerId: tablePlayer.sessionId,
 				playerName: tablePlayer.name,
-			}
-
+			};
 			result.handled = true;
 
 			// If using turn order, always advance. Otherwise, if player passed, check for round end.
@@ -546,15 +541,25 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			result.advance = true;
 			break;
 		case TABLE_SELECT:
-			if (move.type !== SELECT) {
+			if (move.type === SALT && table.currentMove.type === SALT) {
+				table.saltLine = move.line;
+				result.handled = true;
 				return result;
 			}
+			if (move.type !== SELECT) return result;
 			// Player cannot select themself.
-			if (move.targetNmae === tablePlayer.name) return result;
-			table.currentMove.targetName = move.targetName;
+			if (move.targetName === tablePlayer.name) return result;
+			table.currentMove.targetName = table.currentMove.type === SALT ? "" : move.targetName;
 			result.handled = true;
 			result.advance = true;
 			break;
+		case TABLE_ROD_INTERPRET:
+			if (move.type !== INTERPRET) return result;
+			if (tablePlayer.name !== table.currentMove.playerName) return result;
+			var game = getGameByCode(table.code);
+			game.rodDisplay = move.choice;
+			result.handled = true;
+			// We do not advance round, this is handled by timer
 		case TABLE_INTERFERE:
 			break;
 		case TABLE_DISPLAY:
@@ -661,7 +666,8 @@ function advanceRound(table) {
 			var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
 			if (tally.yes.length >= tally.no.length) {
 				tablePlayer.move.success = true;
-				table.message = `The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}. ${table.currentMove.playerName} will now select a player.`;
+				var action = table.currentMove.type === SALT ? "draw a line" : "select a target";
+				table.message = `The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}. ${table.currentMove.playerName} will now ${action}.`;
 				broadcastMessage(table, `The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}.`);
 				table.state = TABLE_SELECT;
 				table.timers[MOVE_TIMER] = getTimerValue(table.settings.selectTime);
@@ -679,13 +685,12 @@ function advanceRound(table) {
 			break;
 		// Move to display result
 		case TABLE_SELECT:
-			clearVotes(table);
 			table.state = TABLE_DISPLAY;
 
-			if (table.currentMove.targetName) {
-				var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
-				table.message = `${table.currentMove.playerName} is ${ITEM_USE_MSG[table.currentMove.type]} ${targetTablePlayer.name}.`;
-				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> is ${ITEM_USE_MSG[table.currentMove.type]} <c>${targetTablePlayer.name}</c>.`);
+			if (table.currentMove.targetName || (table.saltLine.start !== undefined && table.saltLine.end !== undefined)) {
+				var target = table.currentMove.targetName ? ` ${table.currentMove.targetName}` : "";
+				table.message = `${table.currentMove.playerName} is ${ITEM_USE_MSG[table.currentMove.type]}${target}.`;
+				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> is ${ITEM_USE_MSG[table.currentMove.type]}<c>${target}</c>.`);
 				table.resources[table.currentMove.type] -= 1;
 
 				switch (table.currentMove.type) {
@@ -695,17 +700,20 @@ function advanceRound(table) {
 					case BOARD:
 					case ROD:
 					case EXORCISM:
+					case SALT:
+					case SMUDGE:
 						table.state = TABLE_INTERFERE;
 						table.demonMessage = undefined;
-						table.timers[DEMON_TIMER] = getTimerValue(table.settings.interfereTime);
+						table.timers[MOVE_TIMER] = getTimerValue(table.settings.interfereTime);
 						var game = getGameByCode(table.code);
 						game.doInterfere = false;
 						break;
 				}
 			} else {
 				var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
-				table.message = `${table.currentMove.playerName} failed to select a target and forfeits their move.`;
-				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> failed to select a target and forfeits their move.`);
+				var action = table.currentMove.type === SALT ? "complete a line" : "select a target";
+				table.message = `${table.currentMove.playerName} failed to ${action} and forfeits their move.`;
+				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> failed to ${action} and forfeits their move.`);
 				tablePlayer.move.success = false;
 			}
 			autoAdvanceRound(table, table.state === TABLE_INTERFERE ? table.settings.interfereTime + 1 : SHOW_RESULT_DISPLAY_SEC);
@@ -715,6 +723,13 @@ function advanceRound(table) {
 			var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
 			table.demonMessage = undefined;
 			table.state = TABLE_DISPLAY;
+
+			if (game.doInterfere) { 
+				game.anyInterfere = true;
+				game.interfereUses[table.currentMove.type] -= 1;
+			}
+			var demonPlayer = getPlayerBySessionId(table.demonId);
+			demonPlayer.socket.emit("update interfere", game.interfereUses);
 
 			switch (table.currentMove.type) {
 				case BOARD:
@@ -726,13 +741,16 @@ function advanceRound(table) {
 				case ROD:
 					var is = game.possessedPlayers.includes(targetTablePlayer.name);
 					if (game.doInterfere) is = !is;
+					game.rodResult = is;
+					game.rodDisplay = undefined;
 					table.message = `${table.currentMove.playerName} is interpreting the results of the divining rod`;
-
-					var message = `${targetTablePlayer.name} ${is ? "IS" : "IS NOT"} possessed.`;
-					var player = getPlayerBySessionId(table.currentMove.playerId);
-					player.socket.emit("pop up", message);
+					var tablePlayer = getTablePlayerByName(table.currentMove.playerName, table);
+					var player = getPlayerBySessionId(tablePlayer.sessionId);
+					player.socket.emit("rod", is);
+					table.state = TABLE_ROD_INTERPRET;
+					table.timers[MOVE_TIMER] = getTimerValue(table.settings.rodTime);
 					break;
-				case EXORCISM: 
+				case EXORCISM:
 					var is = game.possessedPlayers.includes(targetTablePlayer.name);
 					if (game.doInterfere) is = !is;
 					table.message = `It appears that ${targetTablePlayer.name} ${is ? "IS" : "IS NOT"} possessed`;
@@ -745,6 +763,20 @@ function advanceRound(table) {
 					targetPlayer.socket.emit("pop up", "You are unconscious until tomorrow, do not speak!");
 					break;
 			}
+			autoAdvanceRound(table, table.state === TABLE_ROD_INTERPRET ? table.settings.rodTime : SHOW_RESULT_DISPLAY_SEC);
+			break;
+		case TABLE_ROD_INTERPRET:
+			var game = getGameByCode(table.code);
+			if (game.rodDisplay === undefined) {
+				table.message = `${table.currentMove.playerName} chooses not to share if ${table.currentMove.targetName} is possessed`;
+				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> chooses not to share if <c>${table.currentMove.targetName}</c> is possessed`);
+			} else {
+				var is = game.rodResult;
+				if (!game.rodDisplay) is = !is; 
+				table.message = `${table.currentMove.playerName} reports that ${table.currentMove.targetName} ${is ? "IS" : "IS NOT"} possessed`;
+				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> reports that <c>${table.currentMove.targetName}</c> ${is ? "IS" : "IS NOT"} possessed`);
+			}
+			table.state = TABLE_DISPLAY;
 			autoAdvanceRound(table, SHOW_RESULT_DISPLAY_SEC);
 			break;
 		case TABLE_DISPLAY:
@@ -883,6 +915,8 @@ function handleNewGame(table) {
 	game.interfereUses[BOARD] = 1;
 	game.interfereUses[ROD] = 1;
 	game.interfereUses[EXORCISM] = 1;
+	game.interfereUses[SALT] = 1;
+	game.interfereUses[SMUDGE] = 1;
 
 	game.possessedPlayers = [];
 
@@ -905,12 +939,12 @@ function handleNewGame(table) {
 	// Reset resources
 	table.resources = {};
 	table.resources[WATER] = -1;
+	table.saltLine = {start: undefined, end: undefined};
 
 	// Reset timers
 	table.timers = {};
 	table.timers[ROUND_TIMER] = false;
 	table.timers[MOVE_TIMER] = false;
-	table.timers[DEMON_TIMER] = false;
 
 	// Set turn order
 	if (table.settings.turnOrder) table.startPlayer = Math.floor(Math.random() * table.players.length);
@@ -957,6 +991,8 @@ function handleNewRound(table) {
 		WATER: Math.floor(Math.min(table.players.length / 3, table.resources[WATER] + 1)),
 		ROD: 1,
 		EXORCISM: 1,
+		SALT: 1,
+		SMUDGE: 1,
 	};
 }
 

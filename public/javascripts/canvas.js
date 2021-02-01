@@ -300,6 +300,10 @@ function drawPlayerView() {
 		case TABLE_INTERFERE:
 			labels[theTable.currentMove.type].draw();
 			break;
+		case TABLE_ROD_INTERPRET:
+			labels[ROD].draw();
+			drawGroups["rod"].draw();
+			break;
 		case TABLE_END:
 			if (isTableOwner()) {
 				buttons["finish game"].enable();
@@ -517,7 +521,7 @@ function drawDemonControlPanel() {
 
 	// Demon message
 	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.16, 0.23, 20, "left", false, 0.4 * cvW);
-	if (gameState == TABLE_INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups["interfere"].enable().draw();
+	if (gameState == TABLE_INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups["interfere"].draw();
 
 	// Items
 	if (gameState === TABLE_DAY) {
@@ -526,7 +530,7 @@ function drawDemonControlPanel() {
 		drawGroups["items"].show();
 	}
 	buttons[PASS].disable();
-	drawText("Tools", 0.07, 0.23, 15);
+	drawText("Tools", 0.08, 0.23, 15);
 	var panelH = 0.6;
 	drawRect("#333333", 0.02, 0.25, 0.12, panelH);
 	var margin = 0.01;
@@ -592,12 +596,15 @@ function drawTable() {
 	if (!theTable) {
 		return;
 	}
-
+	
 	// Draw table
 	labels["table_img"].draw();
 
+	if (theTable.currentMove && theTable.currentMove.type === SALT) drawSalt();
+
 	// Draw message.
 	var msg = theTable.message;
+	if (gameState === TABLE_ROD_INTERPRET && thePlayer.name === theTable.currentMove.playerName) msg = `The divining rod reveals that ${theTable.currentMove.targetName} ${rodResult ? "IS" : "IS NOT"} possessed.`;
 	if (gameState === TABLE_LOBBY && theTable.players.length >= theTable.settings.minPlayers && isTableOwner()) msg = "";
 	drawText(msg, 0.3, 0.5, 20, "center", false, labels["table_img"].dims().width * 0.9);
 
@@ -619,11 +626,13 @@ function drawTable() {
 
 function drawTableItems() {
 	var tableWidth = labels["table_img"].dims().width;
+
 	var itemHeight = tableWidth * 0.25;
 	var tableX = labels["table_img"].x() + tableWidth * 0.125;
 	var tableY = labels["table_img"].y() + tableWidth * 0.25; 
 
 	var half = Math.ceil(ITEMS.length / 2);
+	var itemHeight = (tableWidth * 0.75) / (half + 1);
 	for (var i = 0; i < ITEMS.length; i++) {
 		var row = Math.floor(i / half);
 		var col = i % half;
@@ -662,41 +671,87 @@ function drawPlayers() {
 	}
 }
 
-function drawPlayerPad(player, x, y, r) {
+function drawSaltLine(tempEnd) {
+	if (theTable.saltLine.start === undefined) return;
+	var end = theTable.saltLine.end || tempEnd;
+	if (end === undefined) return;
+	var opactity = tempEnd === undefined ? 1 : 0.5;
+
+	var tableRad = labels["table_img"].dims().width / 2;
+	var tableX = labels["table_img"].x() + tableRad;
+	var tableY = labels["table_img"].y() + tableRad;
+	var delta = 360 / (theTable.players.length - 1);
+
+	var startAngle = 180 + delta * (theTable.saltLine.start + 0.5);
+	var endAngle = 180 + delta * (theTable.saltLine.end + 0.5);
+
+	// TODO: bezier curve
+
+	ctx.strokeStyle = WHITE;
+	ctx.lineWidth = 10 * r;
+	ctx.beginPath();
+	ctx.moveTo(tableX - Math.sin(Math.PI * startAngle / 180) * tableRad, tableY + Math.cos(Math.PI * startAngle / 180) * tableRad);
+	ctx.lineTo(tableX, tableY);
+	ctx.lineTo(tableX - Math.sin(Math.PI * endAngle / 180) * tableRad, tableY + Math.cos(Math.PI * endAngle / 180) * tableRad);
+	ctx.stroke();
+}
+
+function drawSalt() {
+	drawSaltLine();
+
+	if (theTable.currentMove.playerName !== thePlayer.name) return;
+
+	var tableRad = labels["table_img"].dims().width / 2;
+	var tableX = labels["table_img"].x() + tableRad;
+	var tableY = labels["table_img"].y() + tableRad;
+	var delta = 360 / (theTable.players.length - 1);
+	var angle = 180 + delta / 2;
+
+	for (var i = 0; i < theTable.players.length - 1; i++) {
+		var rad = Math.PI * angle / 180;
+		var x = tableX - Math.sin(rad) * tableRad;
+		var y = tableY + Math.cos(rad) * tableRad;
+		buttons[`salt ${i}`].setPosition(x, y).draw();
+		angle = (angle + delta) % 360;
+	}
+	drawGroups["salt"].draw();
+}
+
+function drawPlayerPad(player, x, y, rad) {
 	// Draw pentagram under the player pad if player is possessed for player and demon.
 	var pent = IMAGES[PENTAGRAM_GRAY];
 	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
 		pent = IMAGES[PENTAGRAM];
 	}
-	drawImage(pent, x, y, r * 2.75 / cvW, false, true, true);
-	drawCircle(player.color, x, y, r);
+	drawImage(pent, x, y, rad * 2.75 / cvW, false, true, true);
+	drawCircle(player.color, x, y, rad);
 
 	// Move player avatar/button to position.
-	buttons[player.name].setPosition(x - r * 0.25,  y - r * 0.18);
-	buttons[player.name].width = r * 1.6 / cvW;
+	buttons[player.name].setPosition(x - rad * 0.25,  y - rad * 0.18);
+	buttons[player.name].width = rad * 1.6 / cvW;
 	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
 	buttons[player.name].enabled = thePlayer.isDemon || gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name;
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
-	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - r * 0.25, y - r * 0.25, false, r * 1.2 / cvH, true, true);
+	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.25, y - rad * 0.25, false, rad * 1.2 / cvH, true, true);
 
 	// Draw name
-	drawImage(IMAGES[NAMEPLATE], x, y + r * 0.7, r * 2 / cvW, false, true, true);
-	drawText(player.active ? player.name : `< ${player.name} >`, x, y + r * 0.85, 15, undefined, true, r * 2, 5, player.active ? "black" : "gray");
+	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.7, rad * 2 / cvW, false, true, true);
+	drawText(player.active ? player.name : `< ${player.name} >`, x, y + rad * 0.85, 15, undefined, true, rad * 2, 5, player.active ? "black" : "gray");
 	// Draw start player and current player indicators
-	if (theTable.currentPlayer !== undefined && player.name === getCurrentPlayer().name) drawCircle("green", x - r * 0.75, y + r * 0.5, 5);
-	if (theTable.startPlayer !== undefined && player.name === theTable.players[theTable.startPlayer].name) drawCircle("blue", x - r * 0.75, y + r * 0.9, 5);
+	if (gameState !== TABLE_NIGHT && theTable.currentPlayer !== undefined && player.name === getCurrentPlayer().name) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
+	if (gameState !== TABLE_NIGHT && theTable.startPlayer !== undefined && player.name === theTable.players[theTable.startPlayer].name) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
 
 	// Draw player's move
 	if (player.move) { 
-		drawImage(IMAGES[player.move.type], x + r * 0.5, y - r * 0.4, false, r * 0.7 / cvH, true, true);
-		if (player.move.success === false) drawImage(IMAGES[FAIL_X], x + r * 0.5, y - r * 0.4, false, r * 0.6 / cvH, true, true);
+		drawImage(IMAGES[player.move.type], x + rad * 0.5, y - rad * 0.4, false, rad * 0.7 / cvH, true, true);
+		if (player.move.success === false) drawImage(IMAGES[FAIL_X], x + rad * 0.5, y - rad * 0.4, false, rad * 0.6 / cvH, true, true);
 	}
 	// Draw player vote indicator
 	if (player.voted) {
 		var image = player.vote === undefined ? IMAGES[VOTED] : (player.vote ? IMAGES[YES_VOTE] : IMAGES[NO_VOTE]);
-		drawImage(image, x + r * 0.5, y + r * 0.2, undefined, r * 0.7 / cvH, true, true);
+		drawImage(image, x + rad * 0.5, y + rad * 0.2, undefined, rad * 0.7 / cvH, true, true);
 	}
 }
 
