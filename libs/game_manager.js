@@ -374,6 +374,7 @@ function clearChats(table) {
 		var player = getPlayerBySessionId(tablePlayer.sessionId);
 		if (player) {
 			player.socket.emit("clear chat", "player-chat");
+			player.socket.emit("clear chat", "game-log");
 			player.socket.emit("clear chat", "demon-chat");
 		}
 	}
@@ -428,6 +429,8 @@ function handleDemonMove(table, player, move) {
 			break;
 		case TABLE_NIGHT:
 			if (move.type !== SELECT) return result;
+			var game = getGameByCode(table.code);
+			if (game.smudgedPlayer === move.targetName) return result;
 			var success = possessPlayer(table, move.targetName, true);
 			result.handled = success;
 			result.advance = success;
@@ -762,8 +765,47 @@ function advanceRound(table) {
 					var targetPlayer = getPlayerBySessionId(targetTablePlayer.sessionId);
 					targetPlayer.socket.emit("pop up", "You are unconscious until tomorrow, do not speak!");
 					break;
+				case SALT:
+					// Collect salt groups.
+					var groups = [[], []];
+					table.saltLine.result = [false, false];
+					var currGroup = table.saltLine.start < table.saltLine.end ? 1 : 0;
+					var pastDemon = false;
+					for (var i = 0; i < table.players.length; i++) {
+						if (table.players[i].isDemon) {
+							pastDemon = true;
+							continue;
+						}
+						groups[currGroup].push(table.players[i].name);
+						table.saltLine.result[currGroup] |= game.possessedPlayers.includes(table.players[i].name)
+						var saltIndex = (i - (pastDemon ? 1 : 0)).mod(table.players.length - 1);
+						if (saltIndex === table.saltLine.start || saltIndex === table.saltLine.end) {
+							currGroup = 1 - currGroup;
+						}
+					}
+					// If interference, flip results.
+					if (game.doInterfere) {
+						table.saltLine.result[0] = !table.saltLine.result[0];
+						table.saltLine.result[1] = !table.saltLine.result[1];
+					}
+					// No message, show visually.
+					table.message = "";
+					broadcastMessage(table, `Group: ${groups[0].map(p => `<c>${p}</c>`).join(", ")} ${table.saltLine.result[0] ? "DOES" : "DOES NOT"} contain a possessed player.`);
+					broadcastMessage(table, `Group: ${groups[1].map(p => `<c>${p}</c>`).join(", ")} ${table.saltLine.result[1] ? "DOES" : "DOES NOT"} contain a possessed player.`);
+					break;
+				case SMUDGE:
+					table.message = `${targetTablePlayer.name} has been warded against possession next round.`;
+					targetTablePlayer.isSmudged = true;
+					if (!(game.doInterfere || game.possessedPlayers.includes(table.currentMove.playerName))) {
+						game.smudgedPlayer = targetTablePlayer.name;
+						demonPlayer.socket.emit("smudged player", targetTablePlayer.name);
+					}
+					break;
 			}
-			autoAdvanceRound(table, table.state === TABLE_ROD_INTERPRET ? table.settings.rodTime : SHOW_RESULT_DISPLAY_SEC);
+			var wait = SHOW_RESULT_DISPLAY_SEC;
+			if (table.state === TABLE_ROD_INTERPRET) wait = table.settings.rodTime + 1;
+			if (table.currentMove.type === SALT) wait *= 2;
+			autoAdvanceRound(table, wait);
 			break;
 		case TABLE_ROD_INTERPRET:
 			var game = getGameByCode(table.code);
@@ -790,7 +832,10 @@ function advanceRound(table) {
 			for (var tablePlayer of table.players) {
 				tablePlayer.isDamned = false;
 				tablePlayer.isExorcised = false;
+				tablePlayer.isSmudged = false;
+				tablePlayer.wasSmudged = false;
 			}
+
 			break;
 	}
 	updateTable(table);	
@@ -939,7 +984,6 @@ function handleNewGame(table) {
 	// Reset resources
 	table.resources = {};
 	table.resources[WATER] = -1;
-	table.saltLine = {start: undefined, end: undefined};
 
 	// Reset timers
 	table.timers = {};
@@ -981,9 +1025,14 @@ function handleNewRound(table) {
 
 	var game = getGameByCode(table.code);
 	game.damnedPlayers = [];
-	// Clear exorcism
+	game.smudgedPlayer = undefined;
+	var demonPlayer = getPlayerBySessionId(table.demonId);
+	demonPlayer.socket.emit("smudged player");
+	// Clear exorcism and smudge stick
 	for (var player of table.players) {
 		player.isExorcised = false;
+		player.wasSmudged = player.isSmudged;
+		player.isSmudged = false;
 	}
 	// Update resources
 	table.resources = {
@@ -994,6 +1043,7 @@ function handleNewRound(table) {
 		SALT: 1,
 		SMUDGE: 1,
 	};
+	table.saltLine = {start: undefined, end: undefined};
 }
 
 function possessPlayer(table, targetName, doPossess) {
@@ -1159,6 +1209,7 @@ function handleNewConnection(socket, sessionId) {
 				if (tablePlayer.isDemon) {
 					player.socket.emit("possessed players", game.possessedPlayers);
 					player.socket.emit("update interfere", game.interfereUses);
+					player.socket.emit("smudged player", game.smudgedPlayer);
 				}
 			} else {
 				player.tableCode = undefined;

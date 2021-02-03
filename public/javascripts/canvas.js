@@ -138,7 +138,7 @@ function handleKeyDown(event) {
 			}
 			break;
 	}
-	console.log("Key press: " + event.keyCode);
+	// console.log("Key press: " + event.keyCode);
 }
 
 function handleKeyUp(event) {
@@ -295,7 +295,7 @@ function drawPlayerView() {
 			labels[theTable.currentMove.type].draw();
 			break;
 		case TABLE_DISPLAY:
-			if (theTable.currentMove && theTable.currentMove.type !== PASS) labels[theTable.currentMove.type].draw();
+			if (theTable.currentMove && ![PASS, SALT].includes(theTable.currentMove.type)) labels[theTable.currentMove.type].draw();
 			break;
 		case TABLE_INTERFERE:
 			labels[theTable.currentMove.type].draw();
@@ -518,6 +518,7 @@ function drawDemonControlPanel() {
 		drawPlayerPad(player, x, y, padRad);
 		x += padRad * 2.6;
 	}
+	if (theTable.currentMove && theTable.currentMove.type === SALT) drawDemonSalt();
 
 	// Demon message
 	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.16, 0.23, 20, "left", false, 0.4 * cvW);
@@ -671,11 +672,37 @@ function drawPlayers() {
 	}
 }
 
+function drawDemonSalt() {
+	if (theTable.saltLine.start === undefined) return;
+
+	var padRad = Math.min(0.035, 0.96 / (theTable.players.length - 1) / 2.6) * cvW;
+	var x = 0.02 * cvW + wOff;
+	var yTop = 0.03 * cvH + hOff;
+	var yBot = 0.18 * cvH + hOff;
+	var pastDemon = false;
+	for (var i = 0; i < theTable.players.length - 1; i++) {
+		if (theTable.players[i].isDemon) {
+			pastDemon = true;
+			continue;
+		}
+		x += padRad * 2.6;
+		var saltIndex = (i - (pastDemon ? 1 : 0)).mod(theTable.players.length - 1);
+		if (saltIndex === theTable.saltLine.start || saltIndex === theTable.saltLine.end) {
+			ctx.strokeStyle = WHITE;
+			ctx.lineWidth = 10 * r;
+			ctx.beginPath();
+			ctx.moveTo(x, yTop);
+			ctx.lineTo(x, yBot);
+			ctx.stroke();
+		}
+	}
+}
+
 function drawSaltLine(tempEnd) {
+	// TODO: implement tempEnd to show ghost salt line while selecting.
 	if (theTable.saltLine.start === undefined) return;
 	var end = theTable.saltLine.end || tempEnd;
 	if (end === undefined) return;
-	var opactity = tempEnd === undefined ? 1 : 0.5;
 
 	var tableRad = labels["table_img"].dims().width / 2;
 	var tableX = labels["table_img"].x() + tableRad;
@@ -694,6 +721,25 @@ function drawSaltLine(tempEnd) {
 	ctx.lineTo(tableX, tableY);
 	ctx.lineTo(tableX - Math.sin(Math.PI * endAngle / 180) * tableRad, tableY + Math.cos(Math.PI * endAngle / 180) * tableRad);
 	ctx.stroke();
+
+	if (gameState === TABLE_DISPLAY) {
+		ctx.fillStyle = theTable.saltLine.result[0] ? BUTTON_BACKGROUND : BUTTON_TEXT;
+		var centerAngle = (startAngle + endAngle) / 2 + (startAngle > endAngle ? 180 : 0);
+		ctx.beginPath();
+		ctx.moveTo(tableX - Math.sin(Math.PI * centerAngle / 180) * tableRad * 0.1, tableY + Math.cos(Math.PI * centerAngle / 180) * tableRad * 0.1);
+		ctx.lineTo(tableX - Math.sin(Math.PI * (startAngle + 5) / 180) * tableRad * 0.9, tableY + Math.cos(Math.PI * (startAngle + 5) / 180) * tableRad * 0.9);
+		// Note: for arc, 0 is at the 3 o'clock position, but for correct sin/cos calculations, 0 is at 6 o'clock, so add 90 to get correct position.
+		ctx.arc(tableX, tableY, tableRad * 0.9, Math.PI * (startAngle + 5 + 90) / 180, Math.PI * (endAngle - 5 + 90) / 180);
+		ctx.fill();
+
+		ctx.fillStyle = theTable.saltLine.result[1] ? BUTTON_BACKGROUND : BUTTON_TEXT;
+		ctx.beginPath();
+		ctx.moveTo(tableX - Math.sin(Math.PI * (centerAngle + 180) / 180) * tableRad * 0.1, tableY + Math.cos(Math.PI * (centerAngle + 180) / 180) * tableRad * 0.1);
+		ctx.lineTo(tableX - Math.sin(Math.PI * (endAngle + 5) / 180) * tableRad * 0.9, tableY + Math.cos(Math.PI * (endAngle + 5) / 180) * tableRad * 0.9);
+		// Note: for arc, 0 is at the 3 o'clock position, but for correct sin/cos calculations, 0 is at 6 o'clock, so add 90 to get correct position.
+		ctx.arc(tableX, tableY, tableRad * 0.9, Math.PI * (endAngle + 5 + 90) / 180, Math.PI * (startAngle - 5 + 90) / 180);
+		ctx.fill();
+	}
 }
 
 function drawSalt() {
@@ -731,10 +777,13 @@ function drawPlayerPad(player, x, y, rad) {
 	buttons[player.name].width = rad * 1.6 / cvW;
 	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
-	buttons[player.name].enabled = thePlayer.isDemon || gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name;
+	buttons[player.name].enabled = (thePlayer.isDemon && player.name !== smudgedPlayer) || (gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
-	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.25, y - rad * 0.25, false, rad * 1.2 / cvH, true, true);
+	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.7, y - rad * 0.4, false, rad * 0.6 / cvH, true, true);
+	if (player.isSmudged) drawImage(IMAGES[BURNING_SMUDGE], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
+	if (player.wasSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
+	if (thePlayer.isDemon && player.isSmudged && player.name !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
 
 	// Draw name
 	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.7, rad * 2 / cvW, false, true, true);

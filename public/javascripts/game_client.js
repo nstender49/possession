@@ -35,6 +35,8 @@ const ROD = "ROD";
 const EXORCISM = "EXORCISM";
 const SALT = "SALT";
 const SMUDGE = "SMUDGE";
+const BURNING_SMUDGE = "burning_smudge";
+const BURNED_SMUDGE = "burned_smudge";
 
 const ITEMS = [WATER, BOARD, ROD, EXORCISM, SALT, SMUDGE];
 
@@ -69,6 +71,8 @@ IMAGES[ROD] = new PreLoadedImage("/images/rod.png");
 IMAGES[EXORCISM] = new PreLoadedImage("/images/cross.png");
 IMAGES[SALT] = new PreLoadedImage("/images/salt.png");
 IMAGES[SMUDGE] = new PreLoadedImage("/images/smudge_stick.png");
+IMAGES[BURNING_SMUDGE] = new PreLoadedImage("/images/burning_smudge_stick.png");
+IMAGES[BURNED_SMUDGE] = new PreLoadedImage("/images/burned_smudge_stick.png");
 IMAGES[PASS] = new PreLoadedImage("/images/pass.png");
 
 IMAGES[BACK] = new PreLoadedImage("/images/background.jpg");
@@ -123,7 +127,7 @@ var sounds = [];
 // Game state
 var gameState, theTable, thePlayer, thePlayerIsPossessed, rodResult;
 // Demon state
-var possessedPlayers, interfereUses, selectedPlayer, chatIsDemon;
+var possessedPlayers, smudgedPlayer, interfereUses, selectedPlayer;
 var demonChats = [];
 
 // Display
@@ -201,6 +205,11 @@ socket.on("possessed players", function(players) {
 	handleResize();
 });
 
+socket.on("smudged player", function(player) {
+	smudgedPlayer = player;
+	console.log(`Setting smudge: ${player} - SMUDGED? ${smudgedPlayer}`);
+});
+ 
 socket.on("update interfere", function(uses) {
 	interfereUses = uses;
 	var print = []
@@ -293,7 +302,7 @@ function initLabels() {
 	
 	// Chat
 	buttons["submit chat"] = new Button("↵", 15, submitChat).setDims(undefined, 0.05).setCenter(true);
-	labels["chat title"] = new Label("Player Chat", 15).setPosition(0.775, 0.05);
+	labels["chat title"] = new Label("Game Log", 15).setPosition(0.775, 0.05);
 	buttons["next chat"] = new Button(">", 15, cycleChat).setDims(undefined, 0.05);
 	drawGroups["chat"] = new DrawGroup([
 		buttons["submit chat"],
@@ -513,8 +522,8 @@ function addMessage(chat, msg, player) {
 			messages = document.getElementById("game-log");
 		}
 	} else if (thePlayer.isDemon) {
-		console.log(`GOT MESSAGE: ${chat} ${msg} ${player}`);
 		var chatIdx = possessedPlayers.indexOf(player);
+		if (chatIdx === -1) return;
 		messages = demonChats[chatIdx];
 	}
 	addMarkedUpContent(item, msg);
@@ -669,6 +678,8 @@ function changeState(state) {
 			break;
 		case TABLE_END:
 			thePlayerIsPossessed = false;
+			smudgedPlayer = undefined;
+			possessedPlayers = [];
 			removeDemonChats();
 	}
 	gameState = state;
@@ -709,7 +720,6 @@ function updateSalt(pos) {
 	if (pos === undefined) {
 		theTable.saltLine.start = undefined;
 		theTable.saltLine.end = undefined;
-		console.log("ENABLE SALT!!!");
 		for (var i = 0; i < theTable.players.length - 1; i++) {
 			buttons[`salt ${i}`].enable();
 		}
@@ -863,7 +873,6 @@ function updateTable(table) {
 			if (!buttons[player.name]) {
 				buttons[player.name] = new ImageButton(PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.name)).setCenter(true).setAbsolute(true);
 				var fastButton = new Button(player.name, 10, fastChat.bind(null, `<c>${player.name}</c>`)).setDims(0.045, 0.04);
-				console.log(`ADDING BUTTON FOR ${player.name}: ${fastButton.textDims().width} ${fastButton.buttonDims().width}`);
 				if (fastButton.textDims().width > fastButton.buttonDims().width * 0.75) {
 					fastButton.text = player.name.substring(0, Math.floor(player.name.length * fastButton.buttonDims().width * 0.75 / fastButton.textDims().width));
 				}
@@ -948,10 +957,10 @@ function raiseError(msg) {
 
 function fadeLabel(label, start) {
 	if (start) {
-		labels[label].opacity = 1;
+		labels[label].opacity = 100;
 		labels[label].visible = true;
 	} else {
-		labels[label].opacity -= 0.01;
+		labels[label].opacity -= 1;
 	}
 	if (labels[label].opacity > 0) {
 		setTimeout(fadeLabel.bind(null, "error msg", false), ERROR_DURATION_SEC * 10);

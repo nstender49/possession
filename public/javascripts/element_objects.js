@@ -24,7 +24,8 @@ class Element {
 		this.center = false;
 
 		this.visible = true;
-		this.opacity = 1;
+		// Store percent in int to avoid float issues.
+		this.opacity = 100;
 
 		this.enabled = false;
 		this.down = false;
@@ -223,14 +224,15 @@ class Label extends TextElement {
 
 	draw() {
 		if (!this.visible) { return; }
-		if (this.opacity < 1) {
+		if (this.opacity < 100) {
 			ctx.save();
-			ctx.globalAlpha = this.opacity;
+			ctx.globalAlpha = (this.opacity / 100);
 		}
 
 		ctx.strokeStyle = "black";
-		ctx.fillStyle = "white";
-		ctx.lineWidth = (this.size / 30) * r;
+		ctx.fillStyle = this.color;
+		ctx.lineWidth = ((this.size / 30) * r) || 0.25;
+		console.log(`LINE WIDTH: ${ctx.lineWidth} ${this.size}`);
 		ctx.font = (this.size * r) + "px " + this.font;	
 		ctx.textBaseline = "center";
 		ctx.textAlign = this.align;
@@ -238,7 +240,7 @@ class Label extends TextElement {
 		ctx.fillText(this.text, this.x(), this.y());
 		ctx.strokeText(this.text, this.x(), this.y());
 
-		if (this.opacity < 1) ctx.restore();
+		if (this.opacity < 100) ctx.restore();
 	}
 }
 
