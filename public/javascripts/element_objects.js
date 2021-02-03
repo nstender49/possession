@@ -223,7 +223,8 @@ class Label extends TextElement {
 	}
 
 	draw() {
-		if (!this.visible) { return; }
+		if (!this.visible) return; 
+		if (this.opacity <= 0) return;
 		if (this.opacity < 100) {
 			ctx.save();
 			ctx.globalAlpha = (this.opacity / 100);

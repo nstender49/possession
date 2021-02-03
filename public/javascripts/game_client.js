@@ -38,7 +38,7 @@ const SMUDGE = "SMUDGE";
 const BURNING_SMUDGE = "burning_smudge";
 const BURNED_SMUDGE = "burned_smudge";
 
-const ITEMS = [WATER, BOARD, ROD, EXORCISM, SALT, SMUDGE];
+const ITEMS = [BOARD, ROD, SALT, WATER, EXORCISM, SMUDGE];
 
 const SELECT = "SELECT";
 const INTERFERE = "INTERFERE";
@@ -950,12 +950,11 @@ function pageHowTo(inc) {
 
 function raiseError(msg) {
 	labels["error msg"].text = msg;
-	labels["error msg"].opacity = 100;
-	labels["error msg"].visible = true;
 	setTimeout(fadeLabel.bind(null, "error msg", true), ERROR_DURATION_SEC * 10);
 }
 
 function fadeLabel(label, start) {
+	console.log(`IN FADE LABEL ${labels[label].opacity} ${start}`)
 	if (start) {
 		labels[label].opacity = 100;
 		labels[label].visible = true;
@@ -963,8 +962,11 @@ function fadeLabel(label, start) {
 		labels[label].opacity -= 1;
 	}
 	if (labels[label].opacity > 0) {
+		console.log(`\tCALLING AGAIN`);
 		setTimeout(fadeLabel.bind(null, "error msg", false), ERROR_DURATION_SEC * 10);
 	} else {
+		labels[label].opacity = 0;
+		console.log(`\tTHAT's ALL FOLKS!`);
 		labels[label].visible = false;
 	}
 }
