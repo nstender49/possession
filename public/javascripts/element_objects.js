@@ -233,7 +233,6 @@ class Label extends TextElement {
 		ctx.strokeStyle = "black";
 		ctx.fillStyle = this.color;
 		ctx.lineWidth = ((this.size / 30) * r) || 0.25;
-		console.log(`LINE WIDTH: ${ctx.lineWidth} ${this.size}`);
 		ctx.font = (this.size * r) + "px " + this.font;	
 		ctx.textBaseline = "center";
 		ctx.textAlign = this.align;
@@ -286,7 +285,7 @@ let ButtonMixin = (superclass) => class extends superclass {
 
 		if (this.focus) {
 			this.holdTicks += 1;
-			if (this.holdTicks === 15) {
+			if (this.holdTicks > 30) {
 				this.click();
 				this.holdTicks = 0;
 			} 

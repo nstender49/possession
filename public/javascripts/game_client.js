@@ -1,10 +1,55 @@
 // This file manages the games client's logic. It's here that Socket.io connections are handled
 // and functions from canvas.js are used to manage the game's visual appearance.
 
+
+// Config settings received from server.
+var newTableSettings = {
+	// Table settings
+	minPlayers: 6,
+	maxPlayers: 13, 
+	turnOrder: false,
+	items: {
+		"BOARD": true,
+		"ROD": true,
+		"SALT": true,
+		"WATER": true,
+		"EXORCISM": true,
+		"SMUDGE": true,
+	},
+	// Time limits
+	times: {
+		"ROUND": 300,
+		"DISCUSS": 30,
+		"TURN": 60,
+		"SECOND": 10,
+		"VOTE": 20,
+		"SELECT": 30,
+		"INTERFERE": 10,
+		"ROD": 10,
+	}
+};
+const INC_SETTINGS = {
+	"ROUND": {min: 300, max: 1800, inc: 60},
+	"DISCUSS": {min: 0, max: 120, inc: 15},
+	"TURN": {min: 30, max: 240, inc: 15},
+	"SECOND": {min: 10, max: 60, inc: 5},
+	"VOTE": {min: 10, max: 120, inc: 10},
+	"SELECT": {min: 10, max: 120, inc: 10},
+	"INTERFERE": {min: 10, max: 30, inc: 5},
+	"ROD": {min: 10, max: 30, inc: 5},
+	"MIN_PLAYERS": {min: 3, max: 13, inc: 1},
+	"MAX_PLAYERS": {min: 3, max: 13, inc: 1},
+};
+
+const ROUND = "ROUND";
+const DISCUSS = "DISCUSS";
+const TURN = "TURN";
+
 ////////// Game states \\\\\\\\\\\\
 const INIT = "init";
 const MAIN_MENU = "main menu";
 const TABLE_LOBBY = "table lobby";
+const DEMON_SELECTION = "demon selection";
 const TABLE_NIGHT = "table night";
 const TABLE_DISCUSS = "table discuss"
 const TABLE_DAY = "table day";
@@ -25,6 +70,7 @@ const PLAYER_COLORS = [
 // Moves players can make
 const BEGIN = "BEGIN";
 const READY = "READY";
+const ACCEPT_DEMON = "ACCEPT_DEMON"
 const SECOND = "SECOND";
 const VOTE = "VOTE";
 
@@ -48,6 +94,8 @@ const FINISH = "FINISH";
 // Timers
 ROUND_TIMER = "round timer";
 MOVE_TIMER = "move timer";
+ERROR_DURATION_SEC = 2.5,
+PING_TIME_SEC = 180;
 
 // Sound 
 SOUND_ON = "sound_on";
@@ -97,23 +145,6 @@ for (var i = 0; i < AVATAR_COUNT; i++) {
 var DEBUG = false;
 var logFull = true;
 
-// Config settings received from server.
-var newTableSettings = {
-	// Table settings
-	minPlayers: 2,
-	maxPlayers: 12, 
-	turnOrder: false,
-	// Time limits
-	roundTime: 300,
-	discussTime: 30,
-	moveTime: 30,
-	secondTime: 10,
-	selectTime: 60,
-	voteTime: 30,
-	interfereTime: 10,
-	rodTime: 10,
-};
-
 // Game settings
 var soundEnabled = false;
 
@@ -140,6 +171,7 @@ const OVERLAY_POPUP = "pop up";
 const OVERLAY_AVATAR = "avatar";
 const OVERLAY_HOWTO = "how to";
 const OVERLAY_SETTINGS = "settings";
+const OVERLAY_ACCEPT_DEMON = "accept demon";
 
 //////////  Socket Events  \\\\\\\\\\
 
@@ -170,6 +202,11 @@ socket.on("pop up", function(msg) {
 	enableOverlay(OVERLAY_POPUP);
 });
 
+socket.on("accept demon", function() {
+	drawGroups["accept demon"].enable();
+	enableOverlay(OVERLAY_ACCEPT_DEMON);
+});
+
 socket.on("possession", function(isPossessed) {
 	thePlayerIsPossessed = isPossessed
 	setChatHeight();
@@ -180,7 +217,7 @@ socket.on("rod", function(isPossessed) {
 });
 
 socket.on("possessed players", function(players) {
-	if (players.length > possessedPlayers.length) {
+	while (players.length > demonChats.length) {
 		// New possessed player
 		var container = document.getElementById("content");
 		var newChat = document.createElement("ul");
@@ -189,7 +226,8 @@ socket.on("possessed players", function(players) {
 		newChat.style.fontSize = (10 * r) + "px";
 		demonChats.push(newChat);
 		container.appendChild(newChat);
-	} else {
+	}
+	while (players.length < demonChats.length) {
 		// Player no longer possessed
 		for (var i = 0; i < possessedPlayers.length; i++) {
 			if (!players.includes(possessedPlayers[i])) {
@@ -207,7 +245,6 @@ socket.on("possessed players", function(players) {
 
 socket.on("smudged player", function(player) {
 	smudgedPlayer = player;
-	console.log(`Setting smudge: ${player} - SMUDGED? ${smudgedPlayer}`);
 });
  
 socket.on("update interfere", function(uses) {
@@ -251,9 +288,16 @@ function initLabels() {
 	// Table
 	labels["table_img"] = new ImageLabel(IMAGES[TABLE]).setCenter(true).setPosition(0.3, 0.5).setDims(0.4)
 
+	buttons["begin game"] = new Button("Start Game", 15, doMove.bind(null, BEGIN)).setPosition(0.3, 0.3).setDims(0.15, 0.07).setCenter(true);
+	buttons["table settings"] = new Button("Table Settings", 15, enableOverlay.bind(null, OVERLAY_SETTINGS)).setPosition(0.3, 0.4).setDims(0.15, 0.07).setCenter(true);
 	buttons["leave table"] = new Button("Leave Table", 15, leaveTable).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
-	buttons["begin game"] = new Button("Start Game", 15, doMove.bind(null, BEGIN)).setPosition(0.3, 0.5).setDims(0.15, 0.07).setCenter(true);
 	buttons["change avatar"] = new Button("Change Avatar", 15, enableOverlay.bind(null, OVERLAY_AVATAR)).setPosition(0.3, 0.7).setDims(0.15, 0.07).setCenter(true);
+	drawGroups["table lobby"] = new DrawGroup([
+		buttons["leave table"],
+		buttons["table settings"],
+		buttons["begin game"],
+		buttons["change avatar"],
+	])
 	buttons["finish game"] = new Button("Finish Game", 15, doMove.bind(null, FINISH)).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
 
 	// Timers
@@ -273,8 +317,19 @@ function initLabels() {
 		drawGroups["items"].add(buttons[item]);
 	}
 	buttons[PASS] = new Button("Pass", 15, doMove.bind(null, PASS)).setPosition(0.3, 0.54).setDims(0.05, 0.05).setCenter(true);
-	
 	drawGroups["items"].add(buttons[PASS]);
+
+	// Accept demon nomination
+	labels["accept demon 1"] = new Label("The forces of Hell have nominated you as demon!", 15).setPosition(0.3, 0.46);
+	labels["accept demon 2"] = new Label("Playing as demon can be difficult if you are not familiar with the game. Accept?", 10).setPosition(0.3, 0.49);
+	buttons["accept demon yes"] = new Button("Yes", 20, acceptDemon.bind(null, true)).setDims(0.05, 0.05).setPosition(0.25, 0.53).setCenter(true).setOverlay();
+	buttons["accept demon no"] = new Button("No", 20, acceptDemon.bind(null, false)).setDims(0.05, 0.05).setPosition(0.35, 0.53).setCenter(true).setOverlay();
+	drawGroups["accept demon"] = new DrawGroup([
+		labels["accept demon 1"],
+		labels["accept demon 2"],
+		buttons["accept demon yes"],
+		buttons["accept demon no"],
+	]);
 
 	// Planning phase
 	buttons["ready"] = new Button("Advance Round", 15, doMove.bind(null, READY)).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
@@ -375,6 +430,22 @@ function initLabels() {
 		drawGroups["avatar selection"].draws.push(buttons[`color ${color}`]);
 	}
 
+	// Settings
+	buttons["submit settings"] = new Button("Submit", 20, clearOverlay).setDims(0.08, 0.06).setPosition(0.5, 0.9).setCenter(true).setOverlay();
+	drawGroups["settings"] = new DrawGroup([buttons["submit settings"]]);
+	for (var setting of ITEMS.concat(["order"])) {
+		buttons[`enable ${setting}`] = new Button("✓", 20, toggleSetting.bind(null, setting, true)).setDims(0.03).setCenter(true).setSticky(true).setOverlay();
+		buttons[`disable ${setting}`] = new Button("X", 20, toggleSetting.bind(null, setting, false)).setDims(0.03).setCenter(true).setSticky(true).setOverlay();
+		drawGroups["settings"].add(buttons[`enable ${setting}`]);
+		drawGroups["settings"].add(buttons[`disable ${setting}`]);
+	}
+	for (var setting in INC_SETTINGS) {
+		buttons[`decrease ${setting}`] = new Button("<", 20, incSetting.bind(null, setting, false)).setDims(0.03).setCenter(true).setOverlay().setHoldable(true);
+		buttons[`increase ${setting}`] = new Button(">", 20, incSetting.bind(null, setting, true)).setDims(0.03).setCenter(true).setOverlay().setHoldable(true);
+		drawGroups["settings"].add(buttons[`decrease ${setting}`]);
+		drawGroups["settings"].add(buttons[`increase ${setting}`]);
+	}
+
 	// Salt
 	for (var i = 0; i < 12; i++) {
 		buttons[`salt ${i}`] = new ImageButton(IMAGES[SALT], updateSalt.bind(null, i)).setDims(0.025).setAbsolute(true).setCenter(true);
@@ -388,6 +459,35 @@ function initLabels() {
 
 	// Sounds
 	// sounds["count"] = new sound("/sounds/racestart.wav");
+}
+
+function toggleSetting(setting, enable) {
+	switch(setting) {
+		case "order":
+			theTable.settings.turnOrder = enable;
+			break;
+		default:
+			theTable.settings.items[setting] = enable;
+			break;
+	}
+	buttons[`${enable ? "disable" : "enable"} ${setting}`].clicked = false;
+}
+
+function incSetting(setting, increase) {
+	var min = INC_SETTINGS[setting].min;
+	var max = INC_SETTINGS[setting].max;
+	var inc = INC_SETTINGS[setting].inc;
+	switch(setting) {
+		case "MIN_PLAYERS":
+			theTable.settings.minPlayers = Math.min(max, Math.max(min, theTable.settings.minPlayers + inc * (increase ? 1 : -1)));
+			break;
+		case "MAX_PLAYERS":
+			theTable.settings.maxPlayers = Math.min(max, Math.max(min, theTable.settings.maxPlayers + inc * (increase ? 1 : -1)));
+			break;
+		default:
+			theTable.settings.times[setting] = Math.min(max, Math.max(min, theTable.settings.times[setting] + inc * (increase ? 1 : -1)));
+			break;
+	}
 }
 
 function disableInputs() {
@@ -443,7 +543,7 @@ function setChatHeight() {
 				config.x = 0.79;
 				config.y = 0.25;
 				config.w = 0.19;
-				config.h = 0.60;
+				config.h = 0.55;
 			}
 			if (config.name === "chat-input") {
 				config.x = 0.35;
@@ -452,6 +552,11 @@ function setChatHeight() {
 				config.h = 0.05;
 			}
 		}
+		labels["round timer title"].setPosition(0.815, 0.84);
+		labels["round timer hourglass"].setPosition(0.845, 0.805);
+		labels[ROUND_TIMER].setPosition(0.92, 0.84);
+		labels["move timer hourglass"].setPosition(0.93, 0.805);
+		labels[MOVE_TIMER].setPosition(0.965, 0.84);
 	} else {
 		labels["chat title"].setPosition(0.775, 0.05); 
 		buttons["next chat"].setPosition(0.935, 0.0425);
@@ -487,6 +592,11 @@ function setChatHeight() {
 				buttons["submit chat"].setPosition(0.935, 0.925);
 			}
 		}
+		labels["move timer hourglass"].setPosition(0.28, 0.755);
+		labels[MOVE_TIMER].setPosition(0.32, 0.79);
+		labels["round timer title"].setPosition(0.26, 0.235);
+		labels["round timer hourglass"].setPosition(0.295, 0.2);
+		labels[ROUND_TIMER].setPosition(0.375, 0.235);
 	}
 	handleResize();
 }
@@ -584,10 +694,15 @@ function removeDemonChats() {
 	demonChats = [];
 }
 
+function formatSec(sec) {
+	var min = Math.floor(sec / 60);
+	var sec = sec % 60;
+	return (min ? `${min}m` : "") + ((sec || !min) ? `${sec.toString().padStart(2, "0")}s` : "");
+}
+
 function formatTimer(time) {
 	var diff = Math.floor((time - Date.now()) / 1000);
-	if (diff < 60) return `${diff}s`;
-	return `${Math.floor(diff / 60)}m${(diff % 60).toString().padStart(2, "0")}s`;
+	return formatSec(diff);
 }
 
 function setTimer(timer) {
@@ -635,8 +750,9 @@ function changeState(state) {
 			thePlayerIsPossessed = false;
 			possessedPlayers = [];
 			removeDemonChats();
-			buttons["leave table"].enable();
-			buttons["change avatar"].enable();
+			drawGroups["table lobby"].enable();
+			break;
+		case DEMON_SELECTION:
 			break;
 		case TABLE_NIGHT:
 			if (overlay !== OVERLAY_POPUP) overlay = undefined;
@@ -714,6 +830,11 @@ function doInterfere(vote) {
 function doSalt() {
 	if (theTable.saltLine.start === undefined || theTable.saltLine.end === undefined) return; 
 	socket.emit("do move", {type: SELECT});
+}
+
+function acceptDemon(accept) {
+	socket.emit("do move", {type: ACCEPT_DEMON, accept: accept});
+	clearOverlay();
 }
 
 function updateSalt(pos) {
@@ -924,7 +1045,31 @@ function handleServerDisconnect() {
 
 function enableOverlay(theOverlay) {
 	overlay = theOverlay;
-	if ([OVERLAY_AVATAR, OVERLAY_HOWTO].includes(theOverlay)) disableInputs();
+	switch(overlay) {
+		case OVERLAY_POPUP:
+			buttons["clear popup"].enable();
+			break;
+		case OVERLAY_HOWTO:
+			drawGroups["howto"].enable();
+			disableInputs();
+			break;
+		case OVERLAY_AVATAR:
+			drawGroups["avatar selection"].enable();
+			buttons["clear avatar"].enable();
+			disableInputs();
+			break;
+		case OVERLAY_ACCEPT_DEMON:
+			drawGroups["accept demon"].enable();
+			break;
+		case OVERLAY_SETTINGS:
+			drawGroups["settings"].enable();
+			for (var setting of ITEMS.concat(["order"])) {
+				var set = setting === "order" ? theTable.settings.turnOrder : theTable.settings.items[setting];
+				buttons[`${set ? "enable" : "disable"} ${setting}`].clicked = true;
+			}
+			disableInputs();
+			break;
+	}
 }
 
 function clearOverlay() {
@@ -939,6 +1084,13 @@ function clearOverlay() {
 		case OVERLAY_AVATAR:
 			drawGroups["avatar selection"].disable();
 			buttons["clear avatar"].disable();
+			break;
+		case OVERLAY_ACCEPT_DEMON:
+			drawGroups["accept demon"].disable();
+			break;
+		case OVERLAY_SETTINGS:
+			drawGroups["settings"].disable();
+			socket.emit("update settings", theTable.settings);
 			break;
 	}
 	overlay = undefined;
@@ -969,4 +1121,9 @@ function fadeLabel(label, start) {
 		console.log(`\tTHAT's ALL FOLKS!`);
 		labels[label].visible = false;
 	}
+}
+
+function ping() {
+	socket.emit("liveness ping");
+	setTimeout(ping, PING_TIME_SEC * 1000);
 }

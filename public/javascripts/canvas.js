@@ -12,10 +12,10 @@ function init() {
 	loadImages();
 	initInputs();
 	initLabels();
-
 	changeState(INIT);
 	
 	handleResize();
+	ping();
 }
 
 function loadImages() {
@@ -92,7 +92,7 @@ var CTRL = false;
 function handleKeyDown(event) {
 	switch (event.keyCode) {
 		case 13:	// enter
-			if (overlay) {
+			if (overlay && overlay !== OVERLAY_ACCEPT_DEMON) {
 				clearOverlay();
 			} else if (theTable) {
 				buttons["submit chat"].click();
@@ -242,19 +242,26 @@ function tick() {
 		drawGroups["main menu"].draw();
 	} else if (gameState === TABLE_LOBBY) {
 		drawTable();
-		if (theTable.players.length >= theTable.settings.minPlayers && isTableOwner()) {
-			buttons["begin game"].enable();
-			buttons["begin game"].draw();
+		if (isTableOwner()) {
+			if (theTable.players.length >= theTable.settings.minPlayers) {
+				buttons["begin game"].enable();
+			} else {
+				buttons["begin game"].disable().show();
+			}
+			buttons["table settings"].enable();
+		} else {
+			buttons["begin game"].disable();
+			buttons["table settings"].disable();
 		}
-		buttons["leave table"].draw();
-		buttons["change avatar"].draw();
+		drawGroups["table lobby"].draw();
 	} else if (thePlayer.isDemon) {
 		drawDemonView();
 	} else {
 		drawPlayerView();
 	}
 
-	// Overlays
+	drawGroups["timers"].draw();
+
 	switch (overlay) {
 		case OVERLAY_POPUP:
 			drawPopUp();
@@ -265,6 +272,12 @@ function tick() {
 		case OVERLAY_AVATAR:
 			drawAvatarSelection();
 			break;
+		case OVERLAY_ACCEPT_DEMON:
+			drawDemonAccept();
+			break;
+		case OVERLAY_SETTINGS:
+			drawSettings();
+			break;
 	}
 
 	drawGroups["bottom bar"].draw();
@@ -274,6 +287,8 @@ function drawPlayerView() {
 	drawTable();
 
 	switch (gameState) {
+		case DEMON_SELECTION:
+			break;
 		case TABLE_NIGHT:
 			break;
 		case TABLE_DISCUSS:
@@ -430,6 +445,66 @@ function drawHowTo() {
 	drawGroups["howto"].draw();
 }
 
+function drawSettings() {
+	overlayed = true;
+
+	drawRect("#333333", 0.01, 0.01, 0.98, 0.93);
+
+	// Main settings
+	drawRect("#666666", 0.03, 0.03, 0.94, 0.2);
+	var dx = 0.16;
+	var dy = 0.07;
+	drawText("Turn Order", dx, dy + 0.01, 20, "right");
+	buttons[`enable order`].setPosition(dx + 0.05, dy);
+	buttons[`disable order`].setPosition(dx + 0.09, dy);
+
+	dy += 0.06;
+	drawText("Min Players", dx, dy + 0.01, 20, "right");
+	buttons["decrease MIN_PLAYERS"].setPosition(dx + 0.05, dy);
+	drawText(theTable.settings.minPlayers, dx + 0.09, dy + 0.01, 20);
+	buttons["increase MIN_PLAYERS"].setPosition(dx + 0.13, dy);
+
+	dy += 0.06;
+	drawText("Max Players", dx, dy + 0.01, 20, "right");
+	buttons["decrease MAX_PLAYERS"].setPosition(dx + 0.05, dy);
+	drawText(theTable.settings.maxPlayers, dx + 0.09, dy + 0.01, 20);
+	buttons["increase MAX_PLAYERS"].setPosition(dx + 0.13, dy);
+
+	// Items
+	drawRect("#666666", 0.03, 0.25, 0.46, 0.6);
+	var half = Math.ceil(ITEMS.length / 2);
+	var itemHeight = (0.6 * 0.8) / half;
+	var margin = (0.6 - itemHeight * half) / (half + 1);
+	for (var i = 0; i < ITEMS.length; i++) {
+		var row = Math.floor(i / 2);
+		var col = i % 2;
+		var dx = 0.05 + 0.22 * col;
+		var dy = 0.25 + margin * (row + 1) + itemHeight * row;
+		drawImage(IMAGES[ITEMS[i]], dx, dy, false, itemHeight);
+		buttons[`enable ${ITEMS[i]}`].setPosition(dx + 0.14, dy + itemHeight / 2);
+		buttons[`disable ${ITEMS[i]}`].setPosition(dx + 0.18, dy + itemHeight / 2);
+	}
+
+	// Timers
+	drawRect("#666666", 0.51, 0.25, 0.46, 0.6);
+	var margin = 0.07;
+	var dy = 0.24;
+	for (var setting in INC_SETTINGS) {
+		if (["MIN_PLAYERS", "MAX_PLAYERS"].includes(setting)) continue;
+		dy += margin;
+		drawText(title(setting), 0.6, dy + 0.01, 15, "right");
+		buttons[`decrease ${setting}`].setPosition(0.65, dy);
+		drawText(formatSec(theTable.settings.times[setting]), 0.7, dy + 0.01, 15);
+		buttons[`increase ${setting}`].setPosition(0.75, dy);
+	}
+
+	drawGroups["settings"].draw();
+}
+
+function title(s) {
+	return s.charAt(0).toUpperCase() + s.substring(1).toLowerCase();
+}
+
 function drawAvatarSelection() {
 	overlayed = true;
 
@@ -467,8 +542,7 @@ function drawAvatarSelection() {
 		drawColorSelector(color, boxX, boxY, boxWidth, boxWidth);
 	}
 
-	buttons["clear avatar"].enable();
-	buttons["clear avatar"].draw();
+	buttons["clear avatar"].enable().draw();
 }
 
 function drawColorSelector(color, x, y, w, h) {
@@ -505,6 +579,20 @@ function drawPopUp() {
 	buttons["clear popup"].draw();
 }
 
+function drawDemonAccept() {
+	var screenPos = 0.1;
+	var screenL = 0.4;
+	overlayed = true;
+	var x = screenPos * cvW + wOff;
+	var y = 0.4 * cvH + hOff;
+	var w = screenL * cvW;
+	var h = 0.18 * cvH;
+	drawRect("#333333", x, y, w, h, true);
+	drawRect("#810000", x + 10, y + 10, w - 20, h - 20, true);
+	drawGroups["accept demon"].enable();
+	drawGroups["accept demon"].draw();
+}
+
 ////// Main game \\\\\\\\
 
 function drawDemonControlPanel() {
@@ -535,11 +623,11 @@ function drawDemonControlPanel() {
 	var panelH = 0.6;
 	drawRect("#333333", 0.02, 0.25, 0.12, panelH);
 	var margin = 0.01;
-	var h = (panelH - margin * (ITEMS.length + 1)) / ITEMS.length
-	for (var i = 0; i < ITEMS.length; i++) {
+	var h = (panelH - margin * (theTable.itemsInUse.length + 1)) / theTable.itemsInUse.length
+	for (var i = 0; i < theTable.itemsInUse.length; i++) {
 		var dx = 0.08 * cvW + wOff;
 		var dy =(0.25 + h * 0.5 + margin * (i + 1) + h * i) * cvH + hOff;
-		drawItemButton(ITEMS[i], dx, dy, h);
+		drawItemButton(theTable.itemsInUse[i], dx, dy, h);
 	}
 
 	// Drawing the demon chat panels.
@@ -570,7 +658,7 @@ function drawDemonControlPanel() {
 	}
 	// Item fast chat buttons
 	var dx = 0.3;
-	for (var item of ITEMS) {
+	for (var item of theTable.itemsInUse) {
 		buttons[`fast chat ${item}`].setPosition(dx, 0.875).setMargin(5 * r).enable().draw();
 		dx -= 0.05;
 	}
@@ -605,21 +693,23 @@ function drawTable() {
 
 	// Draw message.
 	var msg = theTable.message;
-	if (gameState === TABLE_ROD_INTERPRET && thePlayer.name === theTable.currentMove.playerName) msg = `The divining rod reveals that ${theTable.currentMove.targetName} ${rodResult ? "IS" : "IS NOT"} possessed.`;
-	if (gameState === TABLE_LOBBY && theTable.players.length >= theTable.settings.minPlayers && isTableOwner()) msg = "";
+	if (gameState === TABLE_LOBBY) {
+		if (theTable.players.length >= theTable.settings.minPlayers) {
+			msg = isTableOwner() ? "Press 'Start Game' to begin" : "Waiting for owner to start game";
+		} else {
+			msg = "Waiting for more players to join...";
+		}
+	} else if (gameState === TABLE_ROD_INTERPRET && thePlayer.name === theTable.currentMove.playerName) {
+		msg = `The divining rod reveals that ${theTable.currentMove.targetName} ${rodResult ? "IS" : "IS NOT"} possessed.`;
+	}
 	drawText(msg, 0.3, 0.5, 20, "center", false, labels["table_img"].dims().width * 0.9);
 
 	// Draw buttons
 	if (gameState === TABLE_DAY) {
-		if (thePlayer.move) {
-			drawGroups["items"].disable();
-			drawGroups["items"].show();
-		}
+		if (thePlayer.move) drawGroups["items"].disable().show();
 		drawGroups["items"].draw();
 		drawTableItems();
 	}
-
-	drawGroups["timers"].draw();
 
 	// Draw players
 	drawPlayers();
@@ -632,16 +722,16 @@ function drawTableItems() {
 	var tableX = labels["table_img"].x() + tableWidth * 0.125;
 	var tableY = labels["table_img"].y() + tableWidth * 0.25; 
 
-	var half = Math.ceil(ITEMS.length / 2);
+	var half = Math.ceil(theTable.itemsInUse.length / 2);
 	var itemHeight = (tableWidth * 0.75) / (half + 1);
-	for (var i = 0; i < ITEMS.length; i++) {
+	for (var i = 0; i < theTable.itemsInUse.length; i++) {
 		var row = Math.floor(i / half);
 		var col = i % half;
-		var inRow = row === 0 ? half : ITEMS.length - half;
+		var inRow = row === 0 ? half : theTable.itemsInUse.length - half;
 		var margin = (tableWidth * 0.75 - itemHeight * inRow) / (inRow + 1);
 		var dx = tableX + margin * (col + 1) + itemHeight * (col + 0.5);
 		var dy = tableY + tableWidth * 0.5 * row;
-		drawItemButton(ITEMS[i], dx, dy, itemHeight / cvH);
+		drawItemButton(theTable.itemsInUse[i], dx, dy, itemHeight / cvH);
 	}
 }
 
@@ -660,7 +750,7 @@ function drawPlayers() {
 	var tableX = labels["table_img"].x() + tableRad;
 	var tableY = labels["table_img"].y() + tableRad;
 	var angle = 180; 
-	var delta = 360 / (theTable.players.length - ([TABLE_LOBBY, TABLE_END].includes(gameState) ? 0 : 1));
+	var delta = 360 / (theTable.players.length - ([TABLE_LOBBY, TABLE_END, DEMON_SELECTION].includes(gameState) ? 0 : 1));
 
 	for (var player of theTable.players) {
 		if (player.isDemon) continue;
@@ -789,8 +879,8 @@ function drawPlayerPad(player, x, y, rad) {
 	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.7, rad * 2 / cvW, false, true, true);
 	drawText(player.active ? player.name : `< ${player.name} >`, x, y + rad * 0.85, 15, undefined, true, rad * 2, 5, player.active ? "black" : "gray");
 	// Draw start player and current player indicators
-	if (gameState !== TABLE_NIGHT && theTable.currentPlayer !== undefined && player.name === getCurrentPlayer().name) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
-	if (gameState !== TABLE_NIGHT && theTable.startPlayer !== undefined && player.name === theTable.players[theTable.startPlayer].name) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
+	if (theTable.currentPlayer !== undefined && player.name === getCurrentPlayer().name) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
+	if (theTable.startPlayer !== undefined && player.name === theTable.players[theTable.startPlayer].name) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
 
 	// Draw player's move
 	if (player.move) { 
@@ -928,7 +1018,6 @@ window.requestAnimFrame = (function () {
 var hand, canvas, ctx, cvW, cvH;
 var clickCursor = false,
 	aspect = 16 / 10,
-	ERROR_DURATION_SEC = 2.5,
 	BACKGROUND_COLOR = "#000000",
 	LABEL_FONT = "Tahoma",
 	WHITE = "#ffffff",
