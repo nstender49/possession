@@ -140,7 +140,12 @@ module.exports.listen = function(app) {
 		});
 
 		socket.on("update settings", function(settings) {
-			updateSettings(socket, settings);
+			var table = getTableBySocketId(socket.id);
+			if (isTableOwner(socket.id, table)) {
+				updateSettings(table, settings);
+			} else {
+				socket.emit("server error", "Only owner can modify table settings!");
+			}
 		});
 
 		socket.on("chat msg", function(msg, targetName) {
@@ -171,7 +176,6 @@ function createTable(settings) {
 		code: createTableCode(),
 		players: [],
 		playerColors: [],
-		settings: settings,
 		// Game
 		state: TABLE_LOBBY,
 		message: undefined,
@@ -181,6 +185,7 @@ function createTable(settings) {
 		demonId: undefined,
 		currentMove: undefined,
 	};
+	updateSettings(table, settings);
 	chatLogs[table.code] = [];
 	chatLogs[table.code][GENERAL] = [];
 	tables.push(table);
@@ -294,20 +299,15 @@ function deleteTable(table) {
 	removeByValue(tables, table);
 }
 
-function updateSettings(socket, settings) {
+function updateSettings(table, settings) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var table = getTableBySocketId(socket.id);
 	if (!table) { return false; }
-	if (isTableOwner(socket.id, table)) {
-		table.settings = settings;
-		table.itemsInUse = [];
-		for (var item in table.settings.items) {
-			if (table.settings.items[item]) table.itemsInUse.push(item);
-		}
-		updateTable(table);
-	} else {
-		socket.emit("server error", "Only owner can modify table settings!");
+	table.settings = settings;
+	table.itemsInUse = [];
+	for (var item in table.settings.items) {
+		if (table.settings.items[item]) table.itemsInUse.push(item);
 	}
+	updateTable(table);
 }
 
 function updateAvatar(socket, avatarId) {
@@ -437,6 +437,8 @@ function handleDemonMove(table, player, move) {
 			if (move.type !== SELECT) return result;
 			var game = getGameByCode(table.code);
 			if (game.smudgedPlayer === move.targetName) return result;
+			var targetTablePlayer = getTablePlayerByName(move.targetName, table);
+			if (targetTablePlayer.isPurified || targetTablePlayer.wasPurified) return result;
 			var success = possessPlayer(table, move.targetName, true);
 			result.handled = success;
 			result.advance = success;
@@ -731,6 +733,8 @@ function advanceRound(table) {
 				switch (table.currentMove.type) {
 					case WATER:
 						possessPlayer(table, table.currentMove.targetName, false);
+						var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
+						targetTablePlayer.isPurified = table.settings.waterPurify;
 						break;
 					case BOARD:
 					case ROD:
@@ -864,8 +868,9 @@ function advanceRound(table) {
 				tablePlayer.isExorcised = false;
 				tablePlayer.isSmudged = false;
 				tablePlayer.wasSmudged = false;
+				tablePlayer.isPurified = false;
+				tablePlayer.wasPurified = false;
 			}
-
 			break;
 	}
 	updateTable(table);	
@@ -1007,6 +1012,7 @@ function handleNewGame(table) {
 
 	// Reset resources
 	table.resources = {};
+	table.round = 0;
 	table.resources[WATER] = -1;
 	table.saltLine = {start: undefined, end: undefined};
 
@@ -1059,6 +1065,7 @@ function nextPlayer(table, index) {
 }
 
 function handleNewRound(table) {
+	table.round += 1;
 	if (table.settings.turnOrder) {
 		advanceStartPlayer(table);
 		table.currentPlayer = table.startPlayer;
@@ -1074,6 +1081,8 @@ function handleNewRound(table) {
 		player.isExorcised = false;
 		player.wasSmudged = player.isSmudged;
 		player.isSmudged = false;
+		player.wasPurified = player.isPurified;
+		player.isPurified = false;
 	}
 	// Update resources
 	table.resources = {

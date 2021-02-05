@@ -459,6 +459,12 @@ function drawSettings() {
 	buttons[`disable order`].setPosition(dx + 0.09, dy);
 
 	dy += 0.06;
+	drawText("Water Purify", dx, dy + 0.01, 20, "right");
+	buttons[`enable purify`].setPosition(dx + 0.05, dy);
+	buttons[`disable purify`].setPosition(dx + 0.09, dy);
+
+	var dx = 0.5;
+	var dy = 0.07;
 	drawText("Min Players", dx, dy + 0.01, 20, "right");
 	buttons["decrease MIN_PLAYERS"].setPosition(dx + 0.05, dy);
 	drawText(theTable.settings.minPlayers, dx + 0.09, dy + 0.01, 20);
@@ -676,8 +682,9 @@ function drawDemonControlPanel() {
 		}
 	}
 
-	drawGroups["fast chat"].enable();
-	drawGroups["fast chat"].draw();
+	if (theTable.settings.turnOrder && theTable.round) labels["round timer title"].enable().draw();
+
+	drawGroups["fast chat"].enable().draw();
 }
 
 function drawTable() {
@@ -688,6 +695,8 @@ function drawTable() {
 	
 	// Draw table
 	labels["table_img"].draw();
+
+	if (theTable.settings.turnOrder && theTable.round) labels["round timer title"].enable().draw();
 
 	if (theTable.currentMove && theTable.currentMove.type === SALT) drawSalt();
 
@@ -867,12 +876,13 @@ function drawPlayerPad(player, x, y, rad) {
 	buttons[player.name].width = rad * 1.6 / cvW;
 	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
-	buttons[player.name].enabled = (thePlayer.isDemon && player.name !== smudgedPlayer) || (gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
+	buttons[player.name].enabled = (thePlayer.isDemon && !(possessedPlayers.includes(player.name) || player.name === smudgedPlayer || player.isPurified || player.wasPurified)) || (gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
 	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.7, y - rad * 0.4, false, rad * 0.6 / cvH, true, true);
 	if (player.isSmudged) drawImage(IMAGES[BURNING_SMUDGE], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
 	if (player.wasSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
+	if (player.isPurified || player.wasPurified) drawImage(IMAGES[WATER], x + rad * 0.1, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
 	if (thePlayer.isDemon && player.isSmudged && player.name !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
 
 	// Draw name

@@ -8,6 +8,7 @@ var newTableSettings = {
 	minPlayers: 6,
 	maxPlayers: 13, 
 	turnOrder: true,
+	waterPurify: true,
 	items: {
 		"BOARD": true,
 		"ROD": true,
@@ -301,12 +302,12 @@ function initLabels() {
 	buttons["finish game"] = new Button("Finish Game", 15, doMove.bind(null, FINISH)).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
 
 	// Timers
-	labels["move timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setPosition(0.28, 0.755).setDims(0.015);
-	labels[MOVE_TIMER] = new Label("{}", 20).setPosition(0.32, 0.79);
+	labels["move timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setDims(0.015);
+	labels[MOVE_TIMER] = new Label("{}", 15);
 	drawGroups[MOVE_TIMER] = new DrawGroup([labels["move timer hourglass"], labels[MOVE_TIMER]]);
-	labels["round timer title"] = new Label("Round", 20).setPosition(0.26, 0.235);
-	labels["round timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setPosition(0.295, 0.2).setDims(0.015);
-	labels[ROUND_TIMER] = new Label("{}", 20).setPosition(0.375, 0.235).setAlign("right");
+	labels["round timer title"] = new Label("Round 1", 15);
+	labels["round timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setDims(0.015);
+	labels[ROUND_TIMER] = new Label("{}", 15).setAlign("right");
 	drawGroups[ROUND_TIMER] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels[ROUND_TIMER]]);
 	drawGroups["timers"] = new DrawGroup([drawGroups[MOVE_TIMER], drawGroups[ROUND_TIMER]]);
 
@@ -376,18 +377,13 @@ function initLabels() {
 	]);
 
 	// Fast chat buttons
-	buttons["fast vote yes"] = new Button("Vote Yes", 10, fastChat.bind(null, "vote yes")).setDims(0.06, 0.04).setPosition(0.39, 0.875);
-	buttons["fast vote no"] = new Button("Vote No", 10, fastChat.bind(null, "vote no")).setDims(0.06, 0.04).setPosition(0.455, 0.875);
-	buttons["fast suspect"] = new Button("Suspect", 10, fastChat.bind(null, "suspect")).setDims(0.06, 0.04).setPosition(0.52, 0.875);
-	buttons["fast validate"] = new Button("Validate", 10, fastChat.bind(null, "validate")).setDims(0.06, 0.04).setPosition(0.585, 0.875);
-	buttons["fast go along"] = new Button("Go Along", 10, fastChat.bind(null, "go along")).setDims(0.06, 0.04).setPosition(0.65, 0.875);
-	drawGroups["fast chat"] = new DrawGroup([
-		buttons["fast vote yes"],
-		buttons["fast vote no"],
-		buttons["fast suspect"],
-		buttons["fast validate"],
-		buttons["fast go along"],
-	])
+	drawGroups["fast chat"] = new DrawGroup();
+	var dx = 0.375;
+	for (var t of ["Use", "Vote Y", "Vote N", "Sus", "No Sus", "Agree w/", "STFU"]) {
+		buttons[`fast ${t}`] = new Button(t, 10, fastChat.bind(null, t)).setDims(0.045, 0.04).setPosition(dx, 0.875);
+		drawGroups["fast chat"].add(buttons[`fast ${t}`]);
+		dx += 0.048;
+	}
 	for (var item of ITEMS) {
 		buttons[`fast chat ${item}`] = new ImageButton(IMAGES[item], fastChat.bind(null, item)).setDims(0.04).setBackground(BUTTON_BACKGROUND).setMargin(5);
 	}
@@ -433,7 +429,7 @@ function initLabels() {
 	// Settings
 	buttons["submit settings"] = new Button("Submit", 20, clearOverlay).setDims(0.08, 0.06).setPosition(0.5, 0.9).setCenter(true).setOverlay();
 	drawGroups["settings"] = new DrawGroup([buttons["submit settings"]]);
-	for (var setting of ITEMS.concat(["order"])) {
+	for (var setting of ITEMS.concat(["order", "purify"])) {
 		buttons[`enable ${setting}`] = new Button("✓", 20, toggleSetting.bind(null, setting, true)).setDims(0.03).setCenter(true).setSticky(true).setOverlay();
 		buttons[`disable ${setting}`] = new Button("X", 20, toggleSetting.bind(null, setting, false)).setDims(0.03).setCenter(true).setSticky(true).setOverlay();
 		drawGroups["settings"].add(buttons[`enable ${setting}`]);
@@ -465,6 +461,9 @@ function toggleSetting(setting, enable) {
 	switch(setting) {
 		case "order":
 			theTable.settings.turnOrder = enable;
+			break;
+		case "purify":
+			theTable.settings.waterPurify = enable;
 			break;
 		default:
 			theTable.settings.items[setting] = enable;
@@ -554,7 +553,7 @@ function setChatHeight() {
 		}
 		labels["round timer title"].setPosition(0.815, 0.84);
 		labels["round timer hourglass"].setPosition(0.845, 0.805);
-		labels[ROUND_TIMER].setPosition(0.92, 0.84);
+		labels[ROUND_TIMER].setPosition(0.91, 0.84);
 		labels["move timer hourglass"].setPosition(0.93, 0.805);
 		labels[MOVE_TIMER].setPosition(0.965, 0.84);
 	} else {
@@ -593,10 +592,10 @@ function setChatHeight() {
 			}
 		}
 		labels["move timer hourglass"].setPosition(0.28, 0.755);
-		labels[MOVE_TIMER].setPosition(0.32, 0.79);
-		labels["round timer title"].setPosition(0.26, 0.235);
+		labels[MOVE_TIMER].setPosition(0.31, 0.79);
+		labels["round timer title"].setPosition(theTable.settings.turnOrder ? 0.3 : 0.26, 0.235);
 		labels["round timer hourglass"].setPosition(0.295, 0.2);
-		labels[ROUND_TIMER].setPosition(0.375, 0.235);
+		labels[ROUND_TIMER].setPosition(0.365, 0.235);
 	}
 	handleResize();
 }
@@ -1011,6 +1010,7 @@ function updateTable(table) {
 
 		var change = !theTable || gameState != table.state;
 		theTable = table;
+		labels["round timer title"].text = `Round ${table.round}`;
 		if (change) {
 			changeState(table.state);
 			setChatHeight();
@@ -1063,8 +1063,16 @@ function enableOverlay(theOverlay) {
 			break;
 		case OVERLAY_SETTINGS:
 			drawGroups["settings"].enable();
-			for (var setting of ITEMS.concat(["order"])) {
-				var set = setting === "order" ? theTable.settings.turnOrder : theTable.settings.items[setting];
+			for (var setting of ITEMS.concat(["order", "purify"])) {
+				var set = theTable.settings.items[setting];
+				switch(setting) {
+					case "order":
+						set = theTable.settings.turnOrder;
+						break;
+					case "purify":
+						set = theTable.settings.waterPurify;
+						break;
+				}
 				buttons[`${set ? "enable" : "disable"} ${setting}`].clicked = true;
 			}
 			disableInputs();
