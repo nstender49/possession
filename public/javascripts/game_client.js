@@ -7,7 +7,7 @@ var newTableSettings = {
 	// Table settings
 	minPlayers: 6,
 	maxPlayers: 13, 
-	turnOrder: false,
+	turnOrder: true,
 	items: {
 		"BOARD": true,
 		"ROD": true,
@@ -18,12 +18,12 @@ var newTableSettings = {
 	},
 	// Time limits
 	times: {
-		"ROUND": 300,
-		"DISCUSS": 30,
+		"ROUND": 600,
+		"DISCUSS": 60,
 		"TURN": 60,
 		"SECOND": 10,
 		"VOTE": 20,
-		"SELECT": 30,
+		"SELECT": 20,
 		"INTERFERE": 10,
 		"ROD": 10,
 	}
