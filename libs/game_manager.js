@@ -214,7 +214,7 @@ function joinTable(socket, code, name, avatarId, color) {
 
 	// Check for errors
 	if (!player) return false;
-	
+
 	var table = getTableByCode(code);
 	if (!table) {
 		player.socket.emit("server error", "Table " + code + " not found!");
@@ -890,6 +890,7 @@ function timeoutRound(table) {
 
 function handleRoundEnd(table) {
 	table.saltLine = {start: undefined, end: undefined};
+	table.currentMove = undefined;
 	clearVotes(table);
 	advanceCurrentPlayer(table);
 	var game = getGameByCode(table.code);
@@ -1058,7 +1059,7 @@ function advanceStartPlayer(table) {
 
 function nextPlayer(table, index) {
 	index = (index + 1).mod(table.players.length);
-	if (table.players[index].sessionId === table.demonId) index = (index + 1).mod(table.players.length);
+	if (table.players[index].sessionId === table.demonId || table.players[index].isExorcised) index = (index + 1).mod(table.players.length);
 	return index;
 }
 
