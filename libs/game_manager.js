@@ -1065,10 +1065,6 @@ function nextPlayer(table, index) {
 
 function handleNewRound(table) {
 	table.round += 1;
-	if (table.settings.turnOrder) {
-		advanceStartPlayer(table);
-		table.currentPlayer = table.startPlayer;
-	}
 
 	var game = getGameByCode(table.code);
 	game.damnedPlayers = [];
@@ -1083,6 +1079,12 @@ function handleNewRound(table) {
 		player.wasPurified = player.isPurified;
 		player.isPurified = false;
 	}
+
+	if (table.settings.turnOrder) {
+		advanceStartPlayer(table);
+		table.currentPlayer = table.startPlayer;
+	}
+
 	// Update resources
 	table.resources = {
 		BOARD: 1,
