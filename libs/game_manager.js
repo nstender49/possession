@@ -213,10 +213,8 @@ function joinTable(socket, code, name, avatarId, color) {
 	var player = getPlayerBySocketId(socket.id);
 
 	// Check for errors
-	if (!player) {
-		player.socket.emit("server error", "Invalid connection to server!");
-		return false;
-	}
+	if (!player) return false;
+	
 	var table = getTableByCode(code);
 	if (!table) {
 		player.socket.emit("server error", "Table " + code + " not found!");
