@@ -8,32 +8,13 @@ function init() {
 	ctx = canvas.getContext("2d");
 
 	document.body.style.backgroundColor = BACKGROUND_COLOR;
+	
 
-	loadImages();
 	initInputs();
 	initLabels();
 	changeState(INIT);
-	
-	handleResize();
-	ping();
-}
 
-function loadImages() {
-	allLoaded = false;
-	while (!allLoaded) {
-		allLoaded = true;
-		for (var img of IMAGES) {
-			allLoaded &= img.loaded;
-		}
-		// TODO: player images not being marked as loaded, even though they are?
-		/*
-		for (var img of PLAYER_IMAGES) {
-			console.log(`CHECKING ${img} LOADED`);
-			allLoaded &= img.loaded;
-			if (!img.loaded) console.log(`!!! NOT LOADED! ${img.img.src}`);
-		}
-		*/
-	}
+	handleResize();
 }
 
 var cursorX, cursorY;
@@ -69,26 +50,20 @@ function handleMouseMove(event) {
 function handleMouseDown(event) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	for (var button of getButtons()) {
-		if (button.under(cursorX, cursorY)) {
-			button.down = true;
-			return;
-		}
+		button.handleMouseDown(cursorX, cursorY);
 	}
 }
 
 function handleMouseUp(event) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	for (var button of getButtons()) {
-		if (button.down) {
-			button.toggle();
-		}
-		button.down = false;
+		button.handleMouseUp(cursorX, cursorY);
 	}
 	handleMouseMove(event);
 }
 
 var SHIFTED = false;
-var CTRL = false;
+var ALT = false;
 function handleKeyDown(event) {
 	switch (event.keyCode) {
 		case 13:	// enter
@@ -127,8 +102,8 @@ function handleKeyDown(event) {
 		case 16:    // shift
 			SHIFTED = true;
 			break;
-		case 17:    // shift
-			CTRL = true;
+		case 18:    // alt
+			ALT = true;
 			break;
 		case 27: 	// esc
 			if (gameState === TABLE_LOBBY) {
@@ -138,7 +113,7 @@ function handleKeyDown(event) {
 			}
 			break;
 	}
-	// console.log("Key press: " + event.keyCode);
+	console.log("Key press: " + event.keyCode);
 }
 
 function handleKeyUp(event) {
@@ -146,8 +121,8 @@ function handleKeyUp(event) {
 		case 16:
 			SHIFTED = false;
 			break;
-		case 17:
-			CTRL = false;
+		case 18:
+			ALT = false;
 			break;
 	}
 }
@@ -171,9 +146,14 @@ function handleResize() {
 	}
 	resizeCanvas(window.innerWidth, window.innerHeight);
 
+	resizeElems();
+}
+
+function resizeElems() {
 	// Resize input boxes
-	for (var config of ELEM_CONFIGS) {
-		var elem = document.getElementById(config.name);
+	for (var name in ELEM_CONFIGS) {
+		var config = ELEM_CONFIGS[name];
+		var elem = document.getElementById(name);
 		elem.style.position = "absolute";
 		elem.style.left = (canvas.getBoundingClientRect().left + wOff + cvW * config.x) + "px";
 		elem.style.top = (canvas.getBoundingClientRect().top + hOff + cvH * config.y) + "px";
@@ -185,14 +165,16 @@ function handleResize() {
 			elem.style.fontSize = (config.size * r) + "px";
 		}
 	}
+
 	// Autofill debug fields
 	if (DEBUG) {
 		document.getElementById("player-name").value = "Player" + Math.floor(Math.random() * 100);
 		document.getElementById("game-code").value = "AAAA";
 	}
-	
+
 	// Resize the demon chats
 	if (!theTable) return;
+
 	var numToPossess = Math.ceil((theTable.players.length - 1) / 2);
 	var x = 0.15;
 	var y = 0.25;
@@ -211,6 +193,7 @@ function handleResize() {
 		elem.style.top = (canvas.getBoundingClientRect().top + cvH * dy + hOff) + "px";
 		elem.style.width = (cvW * dw) + "px";
 		elem.style.height = (cvH * dh) + "px";
+		elem.style.fontSize = (10 * r) + "px";
 	}
 }
 
@@ -229,38 +212,50 @@ function tick() {
 	if (IMAGES[BACK].loaded) {
 		ctx.drawImage(IMAGES[BACK].img, 0, 0, window.innerWidth, window.innerHeight);
 	} else {
-		drawRect(BACKGROUND_COLOR, 0, 0, 1, 1);
+		drawRect(BACKGROUND_COLOR, 0, 0, window.innerWidth,	window.innerHeight, true);
 	}
-	if (gameState === INIT) return;
 
+	
 	// Check for holding buttons.
 	for (var button of getButtons()) button.checkHold(cursorX, cursorY);
 
-	if (gameState !== MAIN_MENU) drawGroups["chat"].draw();
-
-	if (gameState === MAIN_MENU) {
-		drawGroups["main menu"].draw();
-	} else if (gameState === TABLE_LOBBY) {
-		drawTable();
-		if (isTableOwner()) {
-			if (theTable.players.length >= theTable.settings.minPlayers) {
-				buttons["begin game"].enable();
+	switch(gameState) {
+		case INIT:
+			drawGroups["init"].draw();
+			labels["error msg"].draw();
+			break;
+		case MAIN_MENU:
+			drawGroups["main menu"].draw();
+			drawGroups["bottom bar"].draw();
+			break;
+		case TABLE_LOBBY:
+			drawGroups["chat"].draw();
+			drawTable();
+			if (isTableOwner()) {
+				if (theTable.players.length >= theTable.settings.minPlayers) {
+					buttons["begin game"].enable();
+				} else {
+					buttons["begin game"].disable().show();
+				}
+				buttons["table settings"].enable();
 			} else {
-				buttons["begin game"].disable().show();
+				buttons["begin game"].disable();
+				buttons["table settings"].disable();
 			}
-			buttons["table settings"].enable();
-		} else {
-			buttons["begin game"].disable();
-			buttons["table settings"].disable();
-		}
-		drawGroups["table lobby"].draw();
-	} else if (thePlayer.isDemon) {
-		drawDemonView();
-	} else {
-		drawPlayerView();
+			drawGroups["table lobby"].draw();
+			drawGroups["bottom bar"].draw();
+			break;
+		default:
+			drawGroups["chat"].draw();
+			if (thePlayer.isDemon) {
+				drawDemonView();
+			} else {
+				drawPlayerView();
+			}
+			drawTimers();
+			drawGroups["bottom bar"].draw();
+			break;
 	}
-
-	drawGroups["timers"].draw();
 
 	switch (overlay) {
 		case OVERLAY_POPUP:
@@ -279,8 +274,20 @@ function tick() {
 			drawSettings();
 			break;
 	}
+}
 
-	drawGroups["bottom bar"].draw();
+function drawTimers() {
+	if (!theTable) return;
+	// Update timers
+	for (var timer in theTable.timers) {
+		if (theTable.timers[timer] && theTable.timers[timer] >= ts.now()) {
+			labels[timer].text = formatSec(Math.floor((theTable.timers[timer] - ts.now()) / 1000));
+			drawGroups[timer].enable();
+		} else {
+			drawGroups[timer].disable();
+		}
+	}
+	drawGroups["timers"].draw();
 }
 
 function drawPlayerView() {
@@ -602,21 +609,26 @@ function drawDemonAccept() {
 ////// Main game \\\\\\\\
 
 function drawDemonControlPanel() {
-	// Draw players
-	var padRad = Math.min(0.035, 0.96 / (theTable.players.length - 1) / 2.6) * cvW;
-	drawRect("#575757", 0.02, 0.02, 0.96, 0.17);
-	var x = 0.02 * cvW + wOff + padRad * 1.3;
+	// Player area
+	drawRect("#575757", 0.02, 0.02, 0.96, 0.16);
+
+	var padRad = Math.min(0.04, 0.96 / (theTable.players.length - 1) / 2.2) * cvW;
+	var margin = Math.min(20, (0.96 * cvW - padRad * (theTable.players.length - 1) * 2) / theTable.players.length);
+
+	var x = 0.02 * cvW + wOff;
+	if (theTable.currentMove && theTable.currentMove.type === SALT) drawDemonSalt(x, 0.03 * cvH + hOff, 0.17 * cvH + hOff, padRad, margin);
+
+	x += padRad + margin;
 	var y = 0.1 * cvH + hOff;
 	for (var player of theTable.players) {
 		if (player.isDemon) continue;
 		drawPlayerPad(player, x, y, padRad);
-		x += padRad * 2.6;
+		x += padRad * 2 + margin;
 	}
-	if (theTable.currentMove && theTable.currentMove.type === SALT) drawDemonSalt();
 
 	// Demon message
 	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.16, 0.23, 20, "left", false, 0.4 * cvW);
-	if (gameState == TABLE_INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups["interfere"].draw();
+	if (gameState == TABLE_INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups[`${theTable.currentMove.type === SALT ? "salt " : ""}interfere`].draw();
 
 	// Items
 	if (gameState === TABLE_DAY) {
@@ -645,7 +657,7 @@ function drawDemonControlPanel() {
 	var w = 0.21;
 	var margin = 0.005;
 	var nameHeight = 0.04;
-	if (CTRL) {
+	if (ALT) {
 		drawRect("white", x, y, 0.63, 0.85 - y);
 	}
 	for (i = 0; i < numSlots; i++) {
@@ -654,7 +666,7 @@ function drawDemonControlPanel() {
 		var dw = w - margin * 2;
 		var dh = h - margin * 2;
 		if (i < possessedPlayers.length) {
-			if (!CTRL && selectedPlayer === possessedPlayers[i]) drawRect("white", dx - margin, dy - margin, w, h);
+			if (!ALT && selectedPlayer === possessedPlayers[i]) drawRect("white", dx - margin, dy - margin, w, h);
 			drawRect(getPlayerByName(possessedPlayers[i]).color, dx, dy, dw, nameHeight);
 			drawText(possessedPlayers[i], dx + w / 2, dy + nameHeight * 0.75, 15, undefined, undefined, undefined, undefined, "black");
 		} else {
@@ -689,9 +701,7 @@ function drawDemonControlPanel() {
 
 function drawTable() {
 	// Check table still exists, in case we have left the table.
-	if (!theTable) {
-		return;
-	}
+	if (!theTable) return;
 	
 	// Draw table
 	labels["table_img"].draw();
@@ -753,9 +763,9 @@ function drawItemButton(item, x, y, size) {
 }
 
 function drawPlayers() {
-	var padRad = 0.04 * cvW;
+	var padRad = 0.045 * cvW;
 	var tableRad = labels["table_img"].dims().width / 2;
-	var playerRad = tableRad + padRad * 1.25;
+	var playerRad = tableRad + padRad * 1.05;
 	var tableX = labels["table_img"].x() + tableRad;
 	var tableY = labels["table_img"].y() + tableRad;
 	var angle = 180; 
@@ -771,28 +781,43 @@ function drawPlayers() {
 	}
 }
 
-function drawDemonSalt() {
+function drawDemonSalt(xStart, yTop, yBot, padRad, margin) {
 	if (theTable.saltLine.start === undefined) return;
+	
+	// Track salt line groupings, so we can display what the result will be to demon.
+	var groupRed = [false, false];
+	var saltBreaks = [0];
+	var startGroup = theTable.saltLine.start < theTable.saltLine.end ? 1 : 0;
+	var currGroup = startGroup;
 
-	var padRad = Math.min(0.035, 0.96 / (theTable.players.length - 1) / 2.6) * cvW;
-	var x = 0.02 * cvW + wOff;
-	var yTop = 0.03 * cvH + hOff;
-	var yBot = 0.18 * cvH + hOff;
-	var pastDemon = false;
+	var saltIndex = 0;
 	for (var i = 0; i < theTable.players.length - 1; i++) {
-		if (theTable.players[i].isDemon) {
-			pastDemon = true;
-			continue;
-		}
-		x += padRad * 2.6;
-		var saltIndex = (i - (pastDemon ? 1 : 0)).mod(theTable.players.length - 1);
+		if (theTable.players[i].isDemon) continue;
+
+		groupRed[currGroup] |= possessedPlayers.includes(theTable.players[i].name);
 		if (saltIndex === theTable.saltLine.start || saltIndex === theTable.saltLine.end) {
+			currGroup = 1 - currGroup;
+			saltBreaks.push(saltIndex + 1);
 			ctx.strokeStyle = WHITE;
-			ctx.lineWidth = 10 * r;
+			ctx.lineWidth = 2.5 * r;
 			ctx.beginPath();
+			var x = xStart + padRad * 2 * (saltIndex + 1) + margin * (saltIndex + 1.5);
 			ctx.moveTo(x, yTop);
 			ctx.lineTo(x, yBot);
 			ctx.stroke();
+		}
+		saltIndex++;
+	}
+	saltBreaks.push(theTable.players.length - 1);
+	// Draw block
+	console.log(`!!!! START GROUP: ${startGroup}, flips: ${saltFlip[0]} ${saltFlip[1]}`)
+	if (theTable.saltLine.start !== undefined && theTable.saltLine.end != undefined) {
+		var yTop = (yTop + yBot) / 2 - padRad - margin * 0.1;
+		for (var i = 0; i < saltBreaks.length - 1; i++) {
+			var blockX = xStart + padRad * 2 * saltBreaks[i] + margin * (saltBreaks[i] + 1 - 0.1);
+			var blockLen = padRad * 2 * (saltBreaks[i + 1] - saltBreaks[i]) + margin * (saltBreaks[i + 1] - saltBreaks[i] - 1 + 0.2);
+			var isRed = saltFlip[(startGroup + i) % 2] ? !groupRed[(startGroup + i) % 2] : groupRed[(startGroup + i) % 2];
+			drawRect(isRed ? BUTTON_BACKGROUND : BUTTON_TEXT, blockX, yTop, blockLen, padRad * 2 + margin * 0.2, true);
 		}
 	}
 }
@@ -868,39 +893,40 @@ function drawPlayerPad(player, x, y, rad) {
 	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
 		pent = IMAGES[PENTAGRAM];
 	}
-	drawImage(pent, x, y, rad * 2.75 / cvW, false, true, true);
-	drawCircle(player.color, x, y, rad);
+	drawImage(pent, x, y, rad * 2 / cvW, false, true, true);
+	drawCircle(player.color, x, y, rad * 0.78);
 
 	// Move player avatar/button to position.
-	buttons[player.name].setPosition(x - rad * 0.25,  y - rad * 0.18);
-	buttons[player.name].width = rad * 1.6 / cvW;
+	buttons[player.name].setPosition(x - rad * 0.25,  y - rad * 0.1);
+	buttons[player.name].width = rad * 1.5 / cvW;
 	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
 	buttons[player.name].enabled = (thePlayer.isDemon && !(possessedPlayers.includes(player.name) || player.name === smudgedPlayer || player.isPurified || player.wasPurified)) || (gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
-	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.7, y - rad * 0.4, false, rad * 0.6 / cvH, true, true);
-	if (player.isSmudged) drawImage(IMAGES[BURNING_SMUDGE], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
-	if (player.wasSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
-	if (player.isPurified || player.wasPurified) drawImage(IMAGES[WATER], x + rad * 0.1, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
-	if (thePlayer.isDemon && player.isSmudged && player.name !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.7, y + rad * 0.1, false, rad * 0.6 / cvH, true, true);
+	
+	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.25, y - rad * 0.2, false, rad * 0.8 / cvH, true, true);
+	if (player.isSmudged) drawImage(IMAGES[BURNING_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
+	if (player.wasSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
+	if (thePlayer.isDemon && player.isSmudged && player.name !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
+	if (player.isPurified || player.wasPurified) drawImage(IMAGES[WATER], x + rad * 0.1, y + rad * 0.15, false, rad * 0.5 / cvH, true, true);
 
 	// Draw name
-	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.7, rad * 2 / cvW, false, true, true);
-	drawText(player.active ? player.name : `< ${player.name} >`, x, y + rad * 0.85, 15, undefined, true, rad * 2, 5, player.active ? "black" : "gray");
+	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.6, rad * 1.6 / cvW, false, true, true);
+	drawText(player.active ? player.name : `< ${player.name} >`, x, y + rad * 0.7, 15, undefined, true, rad * 1.4, 5, player.active ? "black" : "gray");
 	// Draw start player and current player indicators
 	if (theTable.currentPlayer !== undefined && player.name === getCurrentPlayer().name) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
 	if (theTable.startPlayer !== undefined && player.name === theTable.players[theTable.startPlayer].name) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
 
 	// Draw player's move
 	if (player.move) { 
-		drawImage(IMAGES[player.move.type], x + rad * 0.5, y - rad * 0.4, false, rad * 0.7 / cvH, true, true);
-		if (player.move.success === false) drawImage(IMAGES[FAIL_X], x + rad * 0.5, y - rad * 0.4, false, rad * 0.6 / cvH, true, true);
+		drawImage(IMAGES[player.move.type], x + rad * 0.4, y - rad * 0.3, false, rad * 0.6 / cvH, true, true);
+		if (player.move.success === false) drawImage(IMAGES[FAIL_X], x + rad * 0.4, y - rad * 0.3, false, rad * 0.6 / cvH, true, true);
 	}
 	// Draw player vote indicator
 	if (player.voted) {
 		var image = player.vote === undefined ? IMAGES[VOTED] : (player.vote ? IMAGES[YES_VOTE] : IMAGES[NO_VOTE]);
-		drawImage(image, x + rad * 0.5, y + rad * 0.2, undefined, rad * 0.7 / cvH, true, true);
+		drawImage(image, x + rad * 0.4, y + rad * 0.176, undefined, rad * 0.6 / cvH, true, true);
 	}
 }
 
@@ -1028,7 +1054,7 @@ window.requestAnimFrame = (function () {
 var hand, canvas, ctx, cvW, cvH;
 var clickCursor = false,
 	aspect = 16 / 10,
-	BACKGROUND_COLOR = "#000000",
+	BACKGROUND_COLOR = "#222222",
 	LABEL_FONT = "Tahoma",
 	WHITE = "#ffffff",
 	BUTTON_BACKGROUND = "#810000",
@@ -1037,63 +1063,57 @@ var clickCursor = false,
 	BUTTON_DISABLED = "gray";
 
 var VERSION = "v0.1.2";
-var ELEM_CONFIGS = [
-	{
-		name: "player-name",
+var ELEM_CONFIGS = {
+	"player-name": {
 		x: 0.288,
 		y: 0.63,
 		w: 0.3,
 		h: 0.09,
 		size: 40,
 	},
-	{
-		name: "game-code",
+	"game-code": {
 		x: 0.594,
 		y: 0.63,
 		w: 0.12,
 		h: 0.09,
 		size: 40,
 	},
-	{
-		name: "player-chat",
+	"player-chat": {
 		x: 0.60,
 		y: 0.07,
 		w: 0.35,
 		h: 0.83,
 		size: 10,
 	},
-	{
-		name: "game-log",
+	"game-log": {
 		x: 0.60,
 		y: 0.07,
 		w: 0.35,
 		h: 0.83,
 		size: 10,
 	},
-	{
-		name: "chat-input",
+	"chat-input": {
 		x: 0.6,
 		y: 0.9,
 		w: 0.32,
 		h: 0.05,
 		size: 10,
 	},
-	{
-		name: "demon-chat",
+	"demon-chat": {
 		x: 0.6,
 		y: 0.7,
 		w: 0.35,
 		h: 0.25,
 		size: 10,
-	}
-];
+	},
+};
 
 init();
 animate();
 
 window.addEventListener("resize", handleResize, false);
-canvas.addEventListener("mousemove", handleMouseMove, false);
-canvas.addEventListener("mousedown", handleMouseDown, false);
-canvas.addEventListener("mouseup", handleMouseUp, false);
+window.addEventListener("mousemove", handleMouseMove, false);
+window.addEventListener("mousedown", handleMouseDown, false);
+window.addEventListener("mouseup", handleMouseUp, false);
 window.addEventListener("keydown", handleKeyDown, false);
 window.addEventListener("keyup", handleKeyUp, false);

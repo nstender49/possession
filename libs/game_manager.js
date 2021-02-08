@@ -159,8 +159,6 @@ module.exports.listen = function(app) {
 		socket.on("change color", function(color) {
 			updateColor(socket, color);
 		});
-
-		socket.on("liveness ping", function() {});
 	});
 	return io;
 };
@@ -455,7 +453,8 @@ function handleDemonMove(table, player, move) {
 			if (move.type !== INTERFERE) return result;
 			var game = getGameByCode(table.code);
 			if (!game.interfereUses[table.currentMove.type]) return;
-			game.doInterfere = move.vote;
+			game.doInterfere = move.saltFlip ? (move.saltFlip[0] || move.saltFlip[1]) : move.vote;
+			game.saltFlip = move.saltFlip;
 			result.handled = true;
 			// We do not advance round, this is handled by timer
 			break;
@@ -743,6 +742,7 @@ function advanceRound(table) {
 						table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[INTERFERE]);
 						var game = getGameByCode(table.code);
 						game.doInterfere = false;
+						game.saltFlip = [false, false];
 						break;
 				}
 			} else {
@@ -816,10 +816,8 @@ function advanceRound(table) {
 						}
 					}
 					// If interference, flip results.
-					if (game.doInterfere) {
-						table.saltLine.result[0] = !table.saltLine.result[0];
-						table.saltLine.result[1] = !table.saltLine.result[1];
-					}
+					if (game.saltFlip[0]) table.saltLine.result[0] = !table.saltLine.result[0];
+					if (game.saltFlip[1]) table.saltLine.result[1] = !table.saltLine.result[1];
 					// No message, show visually.
 					table.message = "";
 					broadcastMessage(table, `Group: ${groups[0].map(p => `<c>${p}</c>`).join(", ")} ${table.saltLine.result[0] ? "DOES" : "DOES NOT"} contain a possessed player.`);
@@ -1058,8 +1056,9 @@ function advanceStartPlayer(table) {
 }
 
 function nextPlayer(table, index) {
-	index = (index + 1).mod(table.players.length);
-	if (table.players[index].sessionId === table.demonId || table.players[index].isExorcised) index = (index + 1).mod(table.players.length);
+	do {
+		index = (index + 1).mod(table.players.length);
+	} while(table.players[index].sessionId === table.demonId || table.players[index].isExorcised);
 	return index;
 }
 

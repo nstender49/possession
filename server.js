@@ -3,6 +3,8 @@
 
 var express = require("express");
 var session = require("express-session");
+var timesyncServer = require("timesync/server");
+
 var app = express();
 app.use(session({
 	secret: "cookie secret",
@@ -22,6 +24,8 @@ app.use(express.static("public"));  // Staticly serve pages, using directory 'pu
 app.get("/", function(req, res) {
 	// Will serve static pages, no need to handle requests
 });
+
+app.use("/timesync", timesyncServer.requestHandler);
 
 // If any page not handled already handled (ie. doesn't exists)
 app.get("*", function(req, res) {

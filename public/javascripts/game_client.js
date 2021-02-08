@@ -1,13 +1,12 @@
 // This file manages the games client's logic. It's here that Socket.io connections are handled
 // and functions from canvas.js are used to manage the game's visual appearance.
 
-
 // Config settings received from server.
 var newTableSettings = {
 	// Table settings
 	minPlayers: 6,
 	maxPlayers: 13, 
-	turnOrder: true,
+	turnOrder: false,
 	waterPurify: true,
 	items: {
 		"BOARD": true,
@@ -24,8 +23,8 @@ var newTableSettings = {
 		"TURN": 60,
 		"SECOND": 10,
 		"VOTE": 20,
-		"SELECT": 20,
-		"INTERFERE": 10,
+		"SELECT": 200,   // 20
+		"INTERFERE": 20, // 10
 		"ROD": 10,
 	}
 };
@@ -161,9 +160,12 @@ var gameState, theTable, thePlayer, thePlayerIsPossessed, rodResult;
 // Demon state
 var possessedPlayers, smudgedPlayer, interfereUses, selectedPlayer;
 var demonChats = [];
+var saltFlip = [false, false];
 
 // Display
 var timers = [];
+var gameLogRatio = 0.5;
+var demonChatRatio = 0.3;
 
 // Overlay
 var overlay, popupMessage, howtoPage;
@@ -175,6 +177,11 @@ const OVERLAY_SETTINGS = "settings";
 const OVERLAY_ACCEPT_DEMON = "accept demon";
 
 //////////  Socket Events  \\\\\\\\\\
+
+var ts = timesync.create({
+	server: "/timesync",
+	interval: 10000
+});
 
 // Main update function, table contains most of the important information.
 socket.on("update table", function(table) {
@@ -209,7 +216,7 @@ socket.on("accept demon", function() {
 });
 
 socket.on("possession", function(isPossessed) {
-	thePlayerIsPossessed = isPossessed
+	thePlayerIsPossessed = isPossessed;
 	setChatHeight();
 });
 
@@ -276,8 +283,19 @@ socket.on("disconnect", function() {
 
 function initLabels() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	// Main menu
+
 	labels["title"] = new Label("POSSESSION", 80).setPosition(0.5, 0.4);
+	labels["error msg"] = new Label("", 20).setPosition(0.5, 0.98);
+
+	// Init / loading page
+	labels["loading"] = new Label("Waiting for connection to server...", 20).setPosition(0.5, 0.6);
+	drawGroups["init"] = new DrawGroup([
+		labels["title"],
+		labels["loading"],
+		labels["error msg"],
+	])
+
+	// Main menu
 	buttons["make table"] = new Button("Make Table", 60, makeTable).setPosition(0.5, 0.55).setDims(0.427, 0.14).setCenter(true);
 	buttons["join table"] = new Button("Join Table", 60, joinTable).setPosition(0.5, 0.80).setDims(0.427, 0.14).setCenter(true);
 	drawGroups["main menu"] = new DrawGroup([
@@ -303,11 +321,11 @@ function initLabels() {
 
 	// Timers
 	labels["move timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setDims(0.015);
-	labels[MOVE_TIMER] = new Label("{}", 15);
+	labels[MOVE_TIMER] = new Label("", 15);
 	drawGroups[MOVE_TIMER] = new DrawGroup([labels["move timer hourglass"], labels[MOVE_TIMER]]);
 	labels["round timer title"] = new Label("Round 1", 15);
 	labels["round timer hourglass"] = new ImageLabel(IMAGES[HOURGLASS]).setDims(0.015);
-	labels[ROUND_TIMER] = new Label("{}", 15).setAlign("right");
+	labels[ROUND_TIMER] = new Label("", 15).setAlign("right");
 	drawGroups[ROUND_TIMER] = new DrawGroup([labels["round timer title"], labels["round timer hourglass"], labels[ROUND_TIMER]]);
 	drawGroups["timers"] = new DrawGroup([drawGroups[MOVE_TIMER], drawGroups[ROUND_TIMER]]);
 
@@ -342,6 +360,8 @@ function initLabels() {
 		buttons["vote yes"],
 		buttons["vote no"],
 	]);
+
+	// Items images for displaying - TODO: needed?
 	for (var item of ITEMS) {
 		labels[item] = new ImageLabel(IMAGES[item]).setPosition(0.3, 0.35).setDims(0.1).setCenter(true);
 	}
@@ -355,15 +375,17 @@ function initLabels() {
 		buttons["rod hide"],
 		buttons["rod lie"],
 	]);
-	
+
 	// Chat
 	buttons["submit chat"] = new Button("↵", 15, submitChat).setDims(undefined, 0.05).setCenter(true);
-	labels["chat title"] = new Label("Game Log", 15).setPosition(0.775, 0.05);
-	buttons["next chat"] = new Button(">", 15, cycleChat).setDims(undefined, 0.05);
+	buttons["game-log"] = new DragableDivider("Game Log", 10, setChatHeight);
+	buttons["demon-chat"] = new DragableDivider("Demon Chat", 10, setChatHeight);
+	buttons["player-chat"] = new DragableDivider("Player Chat", 10, setChatHeight);
 	drawGroups["chat"] = new DrawGroup([
 		buttons["submit chat"],
-		labels["chat title"],
-		buttons["next chat"],
+		buttons["game-log"],
+		buttons["demon-chat"],
+		buttons["player-chat"],
 	])
 
 	// Demon / interfere
@@ -374,6 +396,20 @@ function initLabels() {
 		labels["interfere"],
 		buttons["interfere yes"],
 		buttons["interfere no"],
+	]);
+	labels["salt interfere 0"] = new Label("Interfere Group 1:", 15).setPosition(0.635, 0.21);
+	labels["salt interfere 1"] = new Label("Interfere Group 2:", 15).setPosition(0.635, 0.245);
+	buttons["salt interfere 0 yes"] = new Button("Yes", 15, saltInterfere.bind(null, 0, true)).setDims(0.03, 0.03).setPosition(0.72, 0.2).setCenter(true).setSticky(true);
+	buttons["salt interfere 0 no"] = new Button("No", 15, saltInterfere.bind(null, 0, false)).setDims(0.03, 0.03).setPosition(0.76, 0.2).setCenter(true).setSticky(true);
+	buttons["salt interfere 1 yes"] = new Button("Yes", 15, saltInterfere.bind(null, 1, true)).setDims(0.03, 0.03).setPosition(0.72, 0.235).setCenter(true).setSticky(true);
+	buttons["salt interfere 1 no"] = new Button("No", 15, saltInterfere.bind(null, 1, false)).setDims(0.03, 0.03).setPosition(0.76, 0.235).setCenter(true).setSticky(true);
+	drawGroups["salt interfere"] = new DrawGroup([
+		labels["salt interfere 0"],
+		buttons["salt interfere 0 yes"],
+		buttons["salt interfere 0 no"],
+		labels["salt interfere 1"],
+		buttons["salt interfere 1 yes"],
+		buttons["salt interfere 1 no"],
 	]);
 
 	// Fast chat buttons
@@ -391,7 +427,6 @@ function initLabels() {
 	// Game settings (bottom bar)
 	labels["table"] = new Label("Table {}", 15).setPosition(0.01, 0.98).setAlign("left").setData("????");
 	buttons["howto"] = new Button("How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO)).setPosition(0.15, 0.97).setDims(0.09, 0.04).setCenter(true);
-	labels["error msg"] = new Label("", 20).setPosition(0.5, 0.98);
 	labels["version"] = new Label("", 15).setPosition(0.99, 0.98).setAlign("right").setFont("monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
 		labels["table"],
@@ -497,26 +532,32 @@ function disableInputs() {
 }
 
 function enableInputs() {
-	if (!theTable || theTable.state === MAIN_MENU) {
-		setElemDisplay(["player-name", "game-code"]);
-	} else {
-		var inputs = ["chat-input"];
-		inputs.push(labels["chat title"].text.toLowerCase().replace(" ", "-"));
-		if (thePlayerIsPossessed) inputs.push("demon-chat");
-		setElemDisplay(inputs);
-		drawGroups["chat"].enable();
+	switch (gameState) {
+		case undefined:
+		case INIT:
+			break;
+		case MAIN_MENU:
+			setElemDisplay(["player-name", "game-code"]);
+			break;
+		default:
+			var inputs = ["chat-input", "game-log", "player-chat"];
+			if (thePlayerIsPossessed) inputs.push("demon-chat");
+			setElemDisplay(inputs);
+			drawGroups["chat"].enable();
+			if (!thePlayerIsPossessed) buttons["demon-chat"].disable();
 
-		if (thePlayer.isDemon) {
-			for (var c of demonChats) {
-				displayElem(c, true);
+			if (thePlayer.isDemon) {
+				for (var c of demonChats) {
+					displayElem(c, true);
+				}
 			}
-		}
+			break;
 	}
 }
 
 function setElemDisplay(inputs = []) {
-	for (var e of ELEM_CONFIGS) {
-		displayElem(document.getElementById(e.name), inputs.includes(e.name));
+	for (var name in ELEM_CONFIGS) {
+		displayElem(document.getElementById(name), inputs.includes(name));
 	}
 }
 
@@ -524,80 +565,111 @@ function displayElem(elem, doDisplay) {
 	elem.style.display = doDisplay ? "block" : "none";
 }
 
-
-function cycleChat() {
-	labels["chat title"].text = labels["chat title"].text === "Player Chat" ? "Game Log" : "Player Chat";
-	enableInputs();
-}
-
 function setChatHeight() {
-	if (!thePlayer || (thePlayer.isDemon && buttons["submit chat"].yy === 0.3325) || (thePlayerIsPossessed && buttons["submit chat"].yy === 0.6825)) return;
+	if (!thePlayer) return;
 	if (thePlayer.isDemon) {
-		labels["chat title"].setPosition(0.885, 0.23);
-		buttons["next chat"].setPosition(0.965, 0.225);
-		buttons["submit chat"].setPosition(0.67, 0.925);
+		const CHAT_X = 0.79;
+		const CHAT_W = 0.19;
+		const CHAT_TOP = 0.25;
+		const CHAT_BOT = 0.80;
+		const CHAT_HEIGHT = CHAT_BOT - CHAT_TOP;
+		const DIV_HEIGHT = 0.025;
 
-		for (var config of ELEM_CONFIGS) {
-			if (["player-chat", "game-log"].includes(config.name)) {
-				config.x = 0.79;
-				config.y = 0.25;
-				config.w = 0.19;
-				config.h = 0.55;
+		// Transitioning from human to demon.
+		if (buttons["game-log"].xx !== CHAT_X) {
+
+			for (var name of ["game-log", "player-chat"]) {
+				buttons[name].setDims(CHAT_W, DIV_HEIGHT);
+				ELEM_CONFIGS[name].x = CHAT_X;
+				ELEM_CONFIGS[name].w = CHAT_W;
 			}
-			if (config.name === "chat-input") {
-				config.x = 0.35;
-				config.y = 0.90;
-				config.w = 0.30;
-				config.h = 0.05;
-			}
+
+			buttons["game-log"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
+			buttons["player-chat"].setPosition(CHAT_X, CHAT_TOP + CHAT_HEIGHT * 0.5);
+
+			ELEM_CONFIGS["chat-input"].x = 0.35;
+			ELEM_CONFIGS["chat-input"].w = 0.30;
+			ELEM_CONFIGS["chat-input"].y = 0.90;
+			ELEM_CONFIGS["chat-input"].h = 0.05;
+
+			buttons["player-chat"].setFixed(false).setLimits(CHAT_TOP + DIV_HEIGHT, CHAT_BOT - DIV_HEIGHT);
+
+			buttons["submit chat"].setPosition(0.67, 0.925);
+
+			labels["round timer title"].setPosition(0.815, 0.84);
+			labels["round timer hourglass"].setPosition(0.845, 0.805);
+			labels[ROUND_TIMER].setPosition(0.91, 0.84);
+			labels["move timer hourglass"].setPosition(0.93, 0.805);
+			labels[MOVE_TIMER].setPosition(0.965, 0.84);
 		}
-		labels["round timer title"].setPosition(0.815, 0.84);
-		labels["round timer hourglass"].setPosition(0.845, 0.805);
-		labels[ROUND_TIMER].setPosition(0.91, 0.84);
-		labels["move timer hourglass"].setPosition(0.93, 0.805);
-		labels[MOVE_TIMER].setPosition(0.965, 0.84);
-	} else {
-		labels["chat title"].setPosition(0.775, 0.05); 
-		buttons["next chat"].setPosition(0.935, 0.0425);
+
+		// Set chats based on dividers
+		for (var name of ["game-log", "player-chat"]) {
+			ELEM_CONFIGS[name].y = buttons[name].yy + DIV_HEIGHT;
+		}
+		ELEM_CONFIGS["game-log"].h = buttons["player-chat"].yy - ELEM_CONFIGS["game-log"].y;
+		ELEM_CONFIGS["player-chat"].h = CHAT_BOT - ELEM_CONFIGS["player-chat"].y;
+	} else {		
+		const CHAT_X = 0.60;
+		const CHAT_W = 0.35;
+		const CHAT_TOP = 0.02;
+		const CHAT_BOT = 0.90;
+		const CHAT_HEIGHT = CHAT_BOT - CHAT_TOP;
+		const DIV_HEIGHT = 0.025;
+
+		// Transitioning from demon to human
+		if (buttons["game-log"].xx !== CHAT_X) {
+			for (var name of ["game-log", "player-chat", "demon-chat"]) {
+				buttons[name].setDims(CHAT_W, DIV_HEIGHT);
+				ELEM_CONFIGS[name].x = CHAT_X;
+				ELEM_CONFIGS[name].w = CHAT_W;
+			}
+
+			buttons["demon-chat"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
+			buttons["game-log"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
+			buttons["player-chat"].setPosition(CHAT_X, CHAT_TOP + CHAT_HEIGHT * 0.5);
+
+			ELEM_CONFIGS["chat-input"].x = 0.60;
+			ELEM_CONFIGS["chat-input"].w = 0.32;
+			ELEM_CONFIGS["chat-input"].y = CHAT_BOT;
+			ELEM_CONFIGS["chat-input"].h = 0.05;	
+
+			buttons["submit chat"].setPosition(0.935, 0.925);
+
+			labels["move timer hourglass"].setPosition(0.28, 0.755);
+			labels[MOVE_TIMER].setPosition(0.31, 0.79);
+			labels["round timer title"].setPosition(theTable.settings.turnOrder ? 0.3 : 0.26, 0.235);
+			labels["round timer hourglass"].setPosition(0.295, 0.2);
+			labels[ROUND_TIMER].setPosition(0.365, 0.235);
+		}
 
 		if (thePlayerIsPossessed) {
-			for (var config of ELEM_CONFIGS) {
-				if (["player-chat", "game-log"].includes(config.name)) {
-					config.x = 0.60;
-					config.y = 0.07;
-					config.w = 0.35;
-					config.h = 0.58;
-				} else if (config.name === "chat-input") {
-					config.x = 0.60;
-					config.y = 0.65;
-					config.w = 0.32;
-					config.h = 0.05;
-				}
-				buttons["submit chat"].setPosition(0.935, 0.675);
+			// Transitioning into possessed
+			if (buttons["game-log"].yy === CHAT_TOP) {
+				var playerHeightRatio = buttons["player-chat"].yy / CHAT_HEIGHT;
+				buttons["game-log"].yy = 0.3;
+				buttons["player-chat"].yy = 0.3 + (CHAT_HEIGHT - 0.3) * playerHeightRatio;
 			}
+			buttons["game-log"].setFixed(false).setLimits(CHAT_TOP + DIV_HEIGHT, buttons["player-chat"].yy - DIV_HEIGHT);
+			buttons["player-chat"].setFixed(false).setLimits(buttons["game-log"].yy + DIV_HEIGHT, CHAT_BOT - DIV_HEIGHT);
 		} else {
-			for (var config of ELEM_CONFIGS) {
-				if (["player-chat", "game-log"].includes(config.name)) {
-					config.x = 0.60;
-					config.y = 0.07;
-					config.w = 0.35;
-					config.h = 0.83;
-				} else if (config.name === "chat-input") {
-					config.x = 0.60;
-					config.y = 0.90;
-					config.w = 0.32;
-					config.h = 0.05;
-				}
-				buttons["submit chat"].setPosition(0.935, 0.925);
+			// Transitioning out of possessed
+			if (buttons["game-log"].yy !== CHAT_TOP) {
+				var playerHeightRatio = (buttons["player-chat"].yy - buttons["game-log"].yy) / (CHAT_BOT - buttons["game-log"].yy);
+				buttons["player-chat"].yy = CHAT_HEIGHT * playerHeightRatio;
+				buttons["game-log"].setPosition(0.6, CHAT_TOP).setFixed(true);
 			}
+			buttons["player-chat"].setFixed(false).setLimits(CHAT_TOP + DIV_HEIGHT, CHAT_BOT - DIV_HEIGHT);
 		}
-		labels["move timer hourglass"].setPosition(0.28, 0.755);
-		labels[MOVE_TIMER].setPosition(0.31, 0.79);
-		labels["round timer title"].setPosition(theTable.settings.turnOrder ? 0.3 : 0.26, 0.235);
-		labels["round timer hourglass"].setPosition(0.295, 0.2);
-		labels[ROUND_TIMER].setPosition(0.365, 0.235);
+
+		for (var name of ["demon-chat", "game-log", "player-chat"]) {
+			ELEM_CONFIGS[name].y = buttons[name].yy + DIV_HEIGHT;
+		}
+		ELEM_CONFIGS["demon-chat"].h = buttons["game-log"].yy - ELEM_CONFIGS["demon-chat"].y;
+		ELEM_CONFIGS["game-log"].h = buttons["player-chat"].yy - ELEM_CONFIGS["game-log"].y;
+		ELEM_CONFIGS["player-chat"].h = CHAT_BOT - ELEM_CONFIGS["player-chat"].y;
 	}
-	handleResize();
+	resizeElems();
 }
 
 function toggleSound(enable) {
@@ -699,38 +771,19 @@ function formatSec(sec) {
 	return (min ? `${min}m` : "") + ((sec || !min) ? `${sec.toString().padStart(2, "0")}s` : "");
 }
 
-function formatTimer(time) {
-	var diff = Math.floor((time - Date.now()) / 1000);
-	return formatSec(diff);
-}
-
-function setTimer(timer) {
-	if (timers[timer]) clearTimeout(timers[timer]);
-	if (!theTable || theTable.timers[timer] === undefined || Date.now() > theTable.timers[timer]) {
-		drawGroups[timer].disable();
-	} else {
-		drawGroups[timer].show();
-		labels[timer].setData(formatTimer(theTable.timers[timer]));
-		timers[timer] = Number(setTimeout(setTimer.bind(null, timer), 1000));
-	}
-}
-
 ///// Game logic \\\\\
 
 function changeState(state) {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (state === gameState) {
-		return;
-	}
-	for (var button of Object.values(buttons)) {
-		button.disable();
-	}
+	if (state === gameState) return;
 
-	enableInputs();
+	for (var button of Object.values(buttons)) button.disable();
+
 	drawGroups["bottom bar"].enable();
 
 	switch(state) {
 		case INIT:
+			disableInputs();
 			overlay = undefined;
 			howtoPage = 0;
 			drawGroups["timers"].disable();
@@ -739,8 +792,7 @@ function changeState(state) {
 		case MAIN_MENU:
 			overlay = undefined;
 			removeDemonChats();
-			buttons["make table"].enable();
-			buttons["join table"].enable();
+			drawGroups["main menu"].enable();
 			clearChat("demon-chat");
 			clearChat("game-log");
 			break;
@@ -787,9 +839,7 @@ function changeState(state) {
 			if (thePlayer.name === theTable.currentMove.playerName) drawGroups["rod"].enable();
 			break;
 		case TABLE_INTERFERE:
-			if (thePlayer.isDemon && interfereUses[theTable.currentMove.type] > 0) {
-				drawGroups["interfere"].enable();
-			}
+			if (thePlayer.isDemon && interfereUses[theTable.currentMove.type] > 0) drawGroups[`${theTable.currentMove.type === SALT ? "salt " : ""}interfere`].enable();
 			break;
 		case TABLE_END:
 			thePlayerIsPossessed = false;
@@ -798,6 +848,7 @@ function changeState(state) {
 			removeDemonChats();
 	}
 	gameState = state;
+	enableInputs();
 }
 
 function isTableOwner() {
@@ -824,6 +875,14 @@ function doInterpret(vote) {
 function doInterfere(vote) {
 	buttons[vote ? "interfere no" : "interfere yes"].clicked = false;
 	socket.emit("do move", {type: INTERFERE, vote: vote});
+}
+
+function saltInterfere(group, doInterfere) {
+	// First group in table order by be different from first "salt" group depending on where line starts
+	var trueGroup = ((theTable.saltLine.start < theTable.saltLine.end ? 1 : 0) + group) % 2;
+	saltFlip[trueGroup] = doInterfere;
+	buttons[`salt interfere ${group} ${doInterfere ? "no" : "yes"}`].clicked = false;
+	socket.emit("do move", {type: INTERFERE, saltFlip: saltFlip});
 }
 
 function doSalt() {
@@ -926,7 +985,7 @@ function changeColor(color) {
 function submitChat() {
 	var input = document.getElementById("chat-input");
 	if (input.value) {
-		if (CTRL && thePlayer.isDemon) {
+		if (ALT && thePlayer.isDemon) {
 			for (var player of possessedPlayers) {
 				socket.emit("chat msg", input.value, player);
 			}
@@ -1001,13 +1060,6 @@ function updateTable(table) {
 			}
 		}
 
-		var newTimers = [];
-		if (theTable) {
-			for (var timer in table.timers) {
-				if (theTable.timers[timer] !== table.timers[timer]) newTimers.push(timer);
-			}
-		}
-
 		var change = !theTable || gameState != table.state;
 		theTable = table;
 		labels["round timer title"].text = `Round ${table.round}`;
@@ -1015,10 +1067,6 @@ function updateTable(table) {
 			changeState(table.state);
 			setChatHeight();
 			enableInputs();
-		}
-		// Update labels that use table data.
-		for (var timer of newTimers) {
-			setTimer(timer);
 		}
 		labels["table"].setData(table.code);
 	} else {
@@ -1038,7 +1086,7 @@ function handleServerDisconnect() {
 	var msg = "Server disconnected!";
 	raiseError(msg);
 	theTable = false;
-	changeState(MAIN_MENU);
+	changeState(INIT);
 }
 
 ///// Utilities \\\\\\\
@@ -1129,9 +1177,4 @@ function fadeLabel(label, start) {
 		console.log(`\tTHAT's ALL FOLKS!`);
 		labels[label].visible = false;
 	}
-}
-
-function ping() {
-	socket.emit("liveness ping");
-	setTimeout(ping, PING_TIME_SEC * 1000);
 }

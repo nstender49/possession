@@ -277,18 +277,27 @@ let ButtonMixin = (superclass) => class extends superclass {
 		var bDims = this.buttonDims();
 		return x >= bDims.left && x <= bDims.right && y <= bDims.bot && y >= bDims.top;
 	}
+
+	handleMouseDown(x, y) {
+		this.down = this.under(x, y);
+	}
+
+	handleMouseUp(x, y) {
+		if (this.under(x, y) && this.down) this.toggle();
+	}
 	
 	checkHold(x, y) {
 		this.focus = this.under(x, y);
-		if (!this.focus) this.down = false;
-		if (!(this.holdable && this.down && this.isEnabled())) return
-
-		if (this.focus) {
+		this.down &= this.focus;
+		if (!this.holdable) return;
+		if (this.down) {
 			this.holdTicks += 1;
 			if (this.holdTicks > 30) {
 				this.click();
 				this.holdTicks = 0;
 			} 
+		} else {
+			this.holdTicks = 0;
 		}
 	}
 
@@ -331,6 +340,72 @@ function drawBorderedRect(x, y, w, h, fillColor, borderColor) {
 
 	ctx.strokeRect(x+(cornerRadius/2), y+(cornerRadius/2), w-cornerRadius, h-cornerRadius);
 	ctx.fillRect(x+(cornerRadius/2), y+(cornerRadius/2), w-cornerRadius, h-cornerRadius);	
+}
+
+class DragableDivider extends ButtonMixin(TextElement) {
+	constructor(text, size, callback) {
+		super(text, size);
+		this.callback = callback;
+		this.yMin = 0;
+		this.yMax = 1;
+		this.fixed = false;
+	}
+
+	setFixed(val) {
+		if (val !== undefined) this.fixed = val;
+		return this;
+	}
+
+	setLimits(min, max) {
+		this.yMin = min;
+		this.yMax = max;
+		return this;
+	}
+	
+	checkHold(x, y) {
+		this.focus = !this.fixed && (this.down || this.under(x, y));
+		if (this.down) {
+			if (this.yDiff !== undefined) {
+				var newY = y + this.yDiff;
+				if (this.center) newY += this.dims().height / 2;
+				if (!this.absolute) newY = (newY - hOff) / cvH;
+				if (Math.abs(1 - this.yy / newY) < 0.01) return;
+				console.log(`${newY} ${this.yMin} ${this.yMax}`);
+				this.yy = Math.max(this.yMin, Math.min(this.yMax, newY));
+				this.callback();
+			}
+		} else {
+			this.yDiff = undefined;
+		}
+	}
+
+	handleMouseDown(x, y) {
+		this.down = !this.fixed && this.under(x, y);
+		if (this.down) {
+			this.yDiff = this.buttonDims().top - y;
+		}
+	}
+
+	handleMouseUp(x, y) {
+		this.down = false;
+	}
+
+	draw() {
+		if (!this.visible) { return; }
+
+		var dims = this.buttonDims();
+		drawBorderedRect(dims.left, dims.top, dims.width, dims.height, this.bgndColor(), this.borderColor());
+ 
+		ctx.strokeStyle = this.textColor();
+		ctx.fillStyle = this.textColor();
+		ctx.font = (this.size * r) + "px " + this.font;
+		ctx.textBaseline = "center";
+		ctx.textAlign = this.align;
+
+		var offW = dims.width / 2;
+		var offH = dims.height * 0.5 + this.textDims().height / 2; 
+		ctx.fillText(this.text, dims.left + offW, dims.top + offH);
+	}
 }
 
 class Button extends ButtonMixin(TextElement) {
