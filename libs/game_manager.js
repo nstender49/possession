@@ -5,12 +5,16 @@ var DEBUG = ENV === "dev";
 var socketio = require("socket.io");
 var cookie = require("cookie");
 
-var players = [];
-var inactive = [];
-var tables = [];
-var chatLogs = [];
+var constants = require("../public/shared/constants");
+const e = require("express");
+
+var players = {};
+var socketMap = {};
+
+var tables = {};
+var chatLogs = {};
 const GENERAL = "general";
-var games = [];
+var games = {};
 
 // Delete tables with all inactive players after 1 hour
 const INACTIVE_TABLE_DELETION_SEC = DEBUG ? 1 : 1 * 60 * 60;
@@ -31,72 +35,21 @@ const PLAYER_WIN_MESSAGE = "The demon's presence has been purged! Sadly it took 
 const DEMON_WIN_MESSAGE = "The demon has possessed half of the players! You have fallen to darkness!";
 
 const ITEM_PROPOSE_MSG = {
-	BOARD: "consult the spirit board",
-	WATER: "use holy water",
-	ROD: "use the divining rod",
-	EXORCISM: "perform an exorcism",
-	SALT: "draw a salt line",
-	SMUDGE: "use a smudge stick",
+	[constants.items.BOARD]: "consult the spirit board",
+	[constants.items.WATER]: "use holy water",
+	[constants.items.ROD]: "use the divining rod",
+	[constants.items.EXORCISM]: "perform an exorcism",
+	[constants.items.SALT]: "draw a salt line",
+	[constants.items.SMUDGE]: "use a smudge stick",
 };
 const ITEM_USE_MSG = {
-	BOARD: "consulting with the spirits about",
-	WATER: "using holy water on",
-	ROD: "using the divining rod to test",
-	EXORCISM: "performing an exorcism on",
-	SALT: "waiting for the salt line to take effect",
-	SMUDGE: "using a smudge stick to ward"
+	[constants.items.BOARD]: "consulting with the spirits about",
+	[constants.items.WATER]: "using holy water on",
+	[constants.items.ROD]: "using the divining rod to test",
+	[constants.items.EXORCISM]: "performing an exorcism on",
+	[constants.items.SALT]: "waiting for the salt line to take effect",
+	[constants.items.SMUDGE]: "using a smudge stick to ward"
 };
-
-const PLAYER_COLORS = [
-	"#fbb7c5", "#8dd304", "#0089cc", "#98178e", "#ed6e01",  
-	"#a37e30", "#ed2c34", "#144c2a", "#0046b6", "#512246", "#fdc918", 
-	"#4c270c", "#000000", "#ffffff"
-];
-const AVATAR_COUNT = 50;
-
-// Timers
-ROUND_TIMER = "round timer";
-MOVE_TIMER = "move timer";
-
-// Game states
-const INIT = "init";
-const MAIN_MENU = "main menu";
-const TABLE_LOBBY = "table lobby";
-const DEMON_SELECTION = "demon selection";
-const TABLE_NIGHT = "table night";
-const TABLE_DISCUSS = "table discuss"
-const TABLE_DAY = "table day";
-const TABLE_SECONDING = "table seconding";
-const TABLE_VOTING = "table voting"; 
-const TABLE_SELECT = "table selecting player";
-const TABLE_INTERFERE = "table demon interference";
-const TABLE_ROD_INTERPRET = "table rod interpret";
-const TABLE_DISPLAY = "table display result";
-const TABLE_END = "table game over";
-
-// Moves players can make
-const BEGIN = "BEGIN";
-const ACCEPT_DEMON = "ACCEPT_DEMON"
-const READY = "READY";
-const SECOND = "SECOND";
-const VOTE = "VOTE";
-
-const PASS = "PASS";
-const BOARD = "BOARD";
-const WATER = "WATER";
-const ROD = "ROD";
-const EXORCISM = "EXORCISM";
-const SALT = "SALT";
-const SMUDGE = "SMUDGE";
-
-const SELECT = "SELECT";
-const INTERFERE = "INTERFERE";
-const INTERPRET = "INTERPRET";
-const FINISH = "FINISH";
-
-const ROUND = "ROUND";
-const DISCUSS = "DISCUSS";
-const TURN = "TURN";
 
 var logFull = true;
 
@@ -141,7 +94,7 @@ module.exports.listen = function(app) {
 
 		socket.on("update settings", function(settings) {
 			var table = getTableBySocketId(socket.id);
-			if (isTableOwner(socket.id, table)) {
+			if (isTableOwner(socketMap[socket.id], table)) {
 				updateSettings(table, settings);
 			} else {
 				socket.emit("server error", "Only owner can modify table settings!");
@@ -173,9 +126,8 @@ function createTable(settings) {
 		// Session
 		code: createTableCode(),
 		players: [],
-		playerColors: [],
 		// Game
-		state: TABLE_LOBBY,
+		state: constants.states.LOBBY,
 		message: undefined,
 		demonMessage: undefined,
 		resources: [],
@@ -186,31 +138,31 @@ function createTable(settings) {
 	updateSettings(table, settings);
 	chatLogs[table.code] = [];
 	chatLogs[table.code][GENERAL] = [];
-	tables.push(table);
+	tables[table.code] = table;
 	return table.code;
 }
 
-function createTableCode() {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var code = "";
-	var charset = "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
-	if (DEBUG) {
-		var charset = String.fromCharCode('A'.charCodeAt() + tables.length);
+function makeTableCode() {
+	const charset = DEBUG ? String.fromCharCode('A'.charCodeAt() + Object.keys(tables).length) : "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
+	const codeLen = 4;
+	let code = "";
+	for (var i = 0; i < codeLen; i++) {
+		code += charset.charAt(Math.floor(Math.random() * charset.length));
 	}
+	return code;
+}
+
+function createTableCode() {
 	do {
-		code = ""
-		for (var i = 0; i < 4; i++) {
-			code += charset.charAt(Math.floor(Math.random() * charset.length));
-		}
-	} while (getTableByCode(code));
+		code = makeTableCode();
+	} while (code in tables);
 	return code;
 }
 
 function joinTable(socket, code, name, avatarId, color) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var player = getPlayerBySocketId(socket.id);
 
-	// Check for errors
+	var player = getPlayerBySocketId(socket.id);
 	if (!player) return false;
 
 	var table = getTableByCode(code);
@@ -222,29 +174,25 @@ function joinTable(socket, code, name, avatarId, color) {
 		player.socket.emit("server error", "Table " + code + " full!");
 		return false;
 	}
-	if (table.state !== TABLE_LOBBY) {
+	if (table.state !== constants.states.LOBBY) {
 		player.socket.emit("server error", "Table " + code + " game in progress!");
 		return false;
 	}
-	for (var tablePlayer of table.players) {
-		if (name.toLowerCase() === tablePlayer.name.toLowerCase()) {
-			player.socket.emit("server error", "Player with name '" + name + "' already exists at table " + code);
-			return false;
-		}
+	if (table.players.find(p => p.name.toLowerCase().trim() === name.toLowerCase().trim())) {
+		player.socket.emit("server error", "Player with name '" + name + "' already exists at table " + code);
+		return false;
 	}
+
 	// Add player to the table.
 	player.tableCode = code;
-	console.log(`ADDING PLAYER WITH SESSIONID ${player.sessionId} AND SOCKETID ${player.socket.id}`);
-	if (!color || table.playerColors.includes(color)) color = getAvailableColor(table);
-	table.playerColors.push(color);
+	if (!color || table.players.find(p => p.color === color)) color = getAvailableColor(table);
 	table.players.push({
 		// Session
 		sessionId: player.sessionId,
-		socketId: player.socket.id,
 		active: true,
 		// Settings
 		name: name,
-		avatarId: (avatarId || avatarId === 0) ? avatarId : Math.floor(Math.random() * AVATAR_COUNT),
+		avatarId: (avatarId || avatarId === 0) ? avatarId : Math.floor(Math.random() * constants.AVATAR_COUNT),
 		color: color,
 		// Game
 		isDemon: false,
@@ -253,46 +201,32 @@ function joinTable(socket, code, name, avatarId, color) {
 	});
 	// Update player on the current state of the world.
 	updateTable(table);
-	// Get player up to speed on chat
-	for (var l of chatLogs[table.code][GENERAL]) {
-		socket.emit("chat msg", l.msg, l.sender);
-	}
+	chatLogs[table.code][GENERAL].map(l => socket.emit("chat msg", l.msg, l.sender));
 }
 
 function leaveTable(socket) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var table = getTableBySocketId(socket.id);
-	if (!table) { return false; }
 
-	if (table.state !== TABLE_LOBBY) {
+	const player = getPlayerBySocketId(socket.id);
+	if (!player) return;
+
+	const table = getTableByCode(player.tableCode);
+	if (!table) return;
+
+	if (table.state !== constants.states.LOBBY) {
 		player.socket.emit("server error", "Can not leave table while a game is in progress!");
-		return false;
+		return;
 	}
+
 	// Remove player.
-	for (var i = 0; i < table.players.length; i++) {
-		if (table.players[i].socketId === socket.id) {
-			removeByValue(table.playerColors, table.players[i].color);
-			table.players.splice(i, 1);
-			break;
-		}
-	}
+	removeByValue(table.players, table.players.find(p => p.sessionId === player.sessionId));
+
 	if (table.players.length === 0) {
 		deleteTable(table);
 	} else {
-		table.message = undefined;
-		// Update remaining players.
 		updateTable(table);
 	}
 	clearTable(socket);
-}
-
-function deleteTable(table) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	// Delete game and table.
-	var game = getGameByCode(table.code);
-	if (game) removeByValue(games, game);
-	delete chatLogs[table.code];
-	removeByValue(tables, table);
 }
 
 function updateSettings(table, settings) {
@@ -307,22 +241,22 @@ function updateSettings(table, settings) {
 }
 
 function updateAvatar(socket, avatarId) {
-	if (avatarId < 0 || avatarId >= AVATAR_COUNT) return;
-	var table = getTableBySocketId(socket.id);
+	if (avatarId < 0 || avatarId >= constants.AVATAR_COUNT) return;
 	var player = getPlayerBySocketId(socket.id);
+	if (!player) return;
+	var table = getTableByCode(player.tableCode);
+	if (!table) return;
 	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
 	tablePlayer.avatarId = avatarId;
 	updateTable(table);
 }
 
 function updateColor(socket, color) {
-	if (!PLAYER_COLORS.includes(color)) return;
+	if (!constants.PLAYER_COLORS.includes(color)) return;
 	var table = getTableBySocketId(socket.id);
-	if (table.playerColors.includes(color)) return;
+	if (table.players.find(p => p.color === color)) return;
 	var player = getPlayerBySocketId(socket.id);
 	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
-	table.playerColors.push(color);
-	removeByValue(table.playerColors, tablePlayer.color);
 	tablePlayer.color = color;
 	updateTable(table);
 }
@@ -380,23 +314,12 @@ function clearChats(table) {
 	}
 }
 
-function clearTimer(table) {
-	if (table.timerId) clearTimeout(table.timerId);
-	table.timerId = undefined;
-	table.timers[MOVE_TIMER] = false;
-}
-
-function clearRoundTimer(table) {
-	if (table.roundTimerId) clearTimeout(table.roundTimerId);
-	table.roundTimerId = undefined;
-	table.timers[ROUND_TIMER] = false;
-}
-
-function emitErrorToTable(table, error) {
-	for (var tablePlayer of table.players) {
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
-		player.socket.emit("server error", error);
-	}
+function clearTimer(table, timer) {
+	const game = getGameByCode(table.code);
+	if (!game) return;
+	if (game.timers[timer]) clearTimeout(game.timers[timer]);
+	game.timers[timer] = undefined;
+	table.timers[timer] = false;
 }
 
 ///// Game logic \\\\\
@@ -404,14 +327,14 @@ function emitErrorToTable(table, error) {
 function handleMove(socket, move) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	var player = getPlayerBySocketId(socket.id);
-	if (!player) { return; }
-	var table = getTableBySocketId(socket.id);
+	if (!player) return;
+	var table = getTableByCode(player.tableCode);
+	if (!table) return;
 	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
 
 	var result = tablePlayer.isDemon ? handleDemonMove(table, player, move) : handlePlayerMove(table, player, tablePlayer, move);
 	if (result.advance) {
-		var error = advanceRound(table);
-		if (error) socket.emit("server error", error);
+		advanceState(table);
 	} else if (result.handled) {
 		updateTable(table);
 	} else {
@@ -425,32 +348,32 @@ function handleDemonMove(table, player, move) {
 		advance: false,
 	};
 	switch (table.state) {
-		case TABLE_LOBBY:
+		case constants.states.LOBBY:
 			break;
-		case DEMON_SELECTION:
+		case constants.states.DEMON_SELECTION:
 			break;
-		case TABLE_NIGHT:
-			if (move.type !== SELECT) return result;
+		case constants.states.NIGHT:
+			if (move.type !== constants.moves.SELECT) return result;
 			var game = getGameByCode(table.code);
 			if (game.smudgedPlayer === move.targetName) return result;
 			var targetTablePlayer = getTablePlayerByName(move.targetName, table);
-			if (targetTablePlayer.isPurified || targetTablePlayer.wasPurified) return result;
+			if (targetTablePlayer.isPurified) return result;
 			var success = possessPlayer(table, move.targetName, true);
 			result.handled = success;
 			result.advance = success;
 			break;
-		case TABLE_DISCUSS:
+		case constants.states.DISCUSS:
 			break;
-		case TABLE_DAY:
+		case constants.states.DAY:
 			break;
-		case TABLE_SECONDING:
+		case constants.states.SECONDING:
 			break;
-		case TABLE_VOTING:
+		case constants.states.VOTING:
 			break;
-		case TABLE_SELECT:
+		case constants.states.SELECT:
 			break;
-		case TABLE_INTERFERE:
-			if (move.type !== INTERFERE) return result;
+		case constants.states.INTERFERE:
+			if (move.type !== constants.moves.INTERFERE) return result;
 			var game = getGameByCode(table.code);
 			if (!game.interfereUses[table.currentMove.type]) return;
 			game.doInterfere = move.saltFlip ? (move.saltFlip[0] || move.saltFlip[1]) : move.vote;
@@ -458,9 +381,9 @@ function handleDemonMove(table, player, move) {
 			result.handled = true;
 			// We do not advance round, this is handled by timer
 			break;
-		case TABLE_DISPLAY:
+		case constants.states.DISPLAY:
 			break;
-		case TABLE_END:
+		case constants.states.END:
 			break;
 	}
 	return result;
@@ -472,14 +395,24 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 		advance: false,
 	};
 	switch (table.state) {
-		case TABLE_LOBBY:
-			if (move.type !== BEGIN || !isTableOwner(tablePlayer.socketId, table)) return result;
+		case constants.states.LOBBY:
+			if (move.type !== constants.moves.BEGIN) return result;
+			if (!isTableOwner(tablePlayer.sessionId, table)) return result;
+			if (table.players.length < table.settings.minPlayers) {
+				player.socket.emit("server error", `Cannot being game with less than ${table.settings.minPlayers} players!`);
+				return result;
+			}
+			if (table.players.length > table.settings.maxPlayers) {
+				player.socket.emit("server error", `Cannot being game with more than ${table.settings.maxPlayers} players!`);
+				return result;
+			}
 			result.handled = true;
 			result.advance = true;
 			break;
-		case DEMON_SELECTION:
-			if (move.type !== ACCEPT_DEMON) return result;
+		case constants.states.DEMON_SELECTION:
+			if (move.type !== constants.moves.ACCEPT_DEMON) return result;
 			var game = getGameByCode(table.code);
+			if (!game) return result;
 			if (tablePlayer.name !== game.demonCandidate) return result;
 			result.handled = true;
 			result.advance = move.accept;
@@ -496,55 +429,57 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 				selectDemonCandidate(table);
 			}
 			break;
-		case TABLE_NIGHT:
+		case constants.states.NIGHT:
 			break;
-		case TABLE_DISCUSS:
-			if (move.type != READY) return result;
-			player.vote = true;
+		case constants.states.DISCUSS:
+			if (move.type != constants.moves.READY) return result;
+
+			var game = getGameByCode(table.code);
+			game.votes[tablePlayer.name] = true;
+
 			result.handled = true;
-			for (var tablePlayer of table.players) {
-				var thePlayer = getPlayerBySessionId(tablePlayer.sessionId);
-				if (!tablePlayer.isDemon && !thePlayer.vote) return result;
-			}
-			result.advance = true;
+			result.advance = Object.keys(game.votes).length === table.players.length - 1;
 			break;
-		case TABLE_DAY:
-			if (!(move.type === PASS || table.itemsInUse.includes(move.type))) return result;
+		case constants.states.DAY:
+			if (!(move.type === constants.moves.PASS || move.type === constants.moves.USE_ITEM && table.itemsInUse.includes(move.item))) return result;
 			// If using turn order, only current player can move.
 			if (table.settings.turnOrder && currentPlayer(table).name !== tablePlayer.name) return result;
 			// Player has already moved this round.
-			if (tablePlayer.move !== undefined) return result;
+			if (tablePlayer.move) return result;
 			// Resource not available.
-			if (table.resources[move.type] < 1) return result;
+			if (table.resources[move.item] < 1) return result;
 
 			// Store move.
-			tablePlayer.move = {type: move.type}
-			table.currentMove = {
-				type: move.type,
-				playerId: tablePlayer.sessionId,
-				playerName: tablePlayer.name,
-			};
 			result.handled = true;
-
-			// If using turn order, always advance. Otherwise, if player passed, check for round end.
-			if (!table.settings.turnOrder && move.type === PASS) {
-				tablePlayer.move.success = true;
-				// If any player hasn't moved yet, do not advance round.
-				for (var tablePlayer of table.players) {
-					// If any player hasn't voted yet, do not advance round.
-					if (tablePlayer.move === undefined && !tablePlayer.isDemon) return result;
+			if (move.type === constants.moves.PASS) {
+				tablePlayer.move = {type: constants.moves.PASS, success: true};
+				// If using turn order, always advance. Otherwise, if player passed, check for round end.
+				if (!table.settings.turnOrder) {
+					// If any player hasn't moved yet, do not advance round.
+					for (var tablePlayer of table.players) {
+						// If any player hasn't voted yet, do not advance round.
+						if (tablePlayer.move === undefined && !tablePlayer.isDemon) return result;
+					}
 				}
+			} else {
+				tablePlayer.move = {type: move.item};
+				table.currentMove = {
+					type: move.item,
+					playerId: tablePlayer.sessionId,
+					playerName: tablePlayer.name,
+				};
 			}
 			result.advance = true;
 			break;
-		case TABLE_SECONDING:
-			if (move.type !== SECOND) return result;
+		case constants.states.SECONDING:
+			if (move.type !== constants.moves.SECOND) return result;
 			if (player.sessionId === table.currentMove.playerId) return result;
 			if (tablePlayer.isExorcised) return result;
 
 			tablePlayer.voted = true;
-			player.vote = move.vote;
-			
+			var game = getGameByCode(table.code);
+			game.votes[tablePlayer.name] = move.vote;
+						
 			// Advance if any player voted yes, or if all player have voted.
 			result.handled = true;
 			if (!move.vote) {
@@ -555,11 +490,14 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			}
 			result.advance = true;
 			break;
-		case TABLE_VOTING:
-			if (move.type !== VOTE) return result;
+		case constants.states.VOTING:
+			if (move.type !== constants.moves.VOTE) return result;
 			if (tablePlayer.isExorcised) return result;
+
 			tablePlayer.voted = true;
-			player.vote = move.vote;
+			var game = getGameByCode(table.code);
+			game.votes[tablePlayer.name] = move.vote;
+			
 			// If all non-demon players have voted, advance round.
 			result.handled = true;
 			for (var tablePlayer of table.players) {
@@ -568,32 +506,48 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			}
 			result.advance = true;
 			break;
-		case TABLE_SELECT:
-			if (move.type === SALT && table.currentMove.type === SALT) {
-				table.saltLine = move.line;
-				result.handled = true;
-				return result;
+		case constants.states.SELECT:
+			if (move.type !== constants.moves.SELECT) return result;
+			if (table.currentMove.playerName !== tablePlayer.name) return result;
+			if (table.currentMove.type === constants.items.SALT) {
+				// Player first selects salt line (shows to all users), then submit separately.
+				if (move.line) {
+					// Validate player input
+					if (move.line.start === undefined || move.line.start < 0 || move.line.start > table.players.length - 1) move.line.start = undefined;
+					if (move.line.end === undefined || move.line.end < 0 || move.line.end > table.players.length - 1) move.line.end = undefined;
+					if (move.line.start !== undefined && move.line.end !== undefined) {
+						for (var i = -1; i <= 1; i++) {
+							if ((move.line.start + i).mod(table.players.length - 1) === move.line.end) move.line.end = undefined;
+						}
+					}
+					table.saltLine = move.line;
+					result.handled = true;
+					return result;
+				} else {
+					if (table.saltLine.start === undefined || table.saltLine.end === undefined) return result;
+					table.currentMove.targetName = "";
+				}
+			} else {
+				// Player cannot select themself.
+				if (move.targetName === tablePlayer.name) return result;
+				table.currentMove.targetName = move.targetName;
 			}
-			if (move.type !== SELECT) return result;
-			// Player cannot select themself.
-			if (move.targetName === tablePlayer.name) return result;
-			table.currentMove.targetName = table.currentMove.type === SALT ? "" : move.targetName;
 			result.handled = true;
 			result.advance = true;
 			break;
-		case TABLE_ROD_INTERPRET:
-			if (move.type !== INTERPRET) return result;
+		case constants.states.INTERPRET:
+			if (move.type !== constants.moves.INTERPRET) return result;
 			if (tablePlayer.name !== table.currentMove.playerName) return result;
 			var game = getGameByCode(table.code);
 			game.rodDisplay = move.choice;
 			result.handled = true;
 			// We do not advance round, this is handled by timer
-		case TABLE_INTERFERE:
+		case constants.states.INTERFERE:
 			break;
-		case TABLE_DISPLAY:
+		case constants.states.DISPLAY:
 			break;
-		case TABLE_END:
-			if (move.type !== FINISH || !isTableOwner(tablePlayer.socketId, table)) return result;
+		case constants.states.END:
+			if (move.type !== constants.moves.FINISH || !isTableOwner(tablePlayer.sessionId, table)) return result;
 			result.handled = true;
 			result.advance = true;
 			break;
@@ -601,125 +555,124 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 	return result;
 }
 
-function advanceRound(table) {
+function advanceState(table) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 
-	clearTimer(table);
+	clearTimer(table, constants.timers.MOVE);
 
 	switch (table.state) {
 		// Start game.
-		case TABLE_LOBBY:
-			clearMoves(table);
-			clearVotes(table);
-			var valid = handleNewGame(table);
-			if (!valid) { return; }
+		case constants.states.LOBBY:
+			handleNewGame(table);
 			table.message = DEMON_SELECTION_MSG;
-			table.state = DEMON_SELECTION;
+			table.state = constants.states.DEMON_SELECTION;
 			break;
-		case DEMON_SELECTION:
-			table.message = NIGHT_PLAYER_MSG;
-			table.demonMessage = NIGHT_DEMON_MSG;
-			table.state = TABLE_NIGHT;
+		case constants.states.DEMON_SELECTION:
 			handleNewRound(table);
 			break;
 		// Move to day time
-		case TABLE_NIGHT:
-			// Update table resources for new round.
-			table.state = TABLE_DISCUSS;
+		case constants.states.NIGHT:
+			table.state = constants.states.DISCUSS;
 			table.message = DISCUSS_PLAYER_MSG;
 			table.demonMessage = DISCUSS_DEMON_MSG;
-			table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[DISCUSS]);
-			autoAdvanceRound(table, table.settings.times[DISCUSS]);
+
+			// Clear over-night protection.
+			var game = getGameByCode(table.code);
+			game.smudgedPlayer = undefined;
+			var demonPlayer = getPlayerBySessionId(table.demonId);
+			demonPlayer.socket.emit("smudged player");
+
+			table.players.forEach(function (player) {
+				player.isSmudged = false;
+				player.isPurified = false;
+			});
+
+			autoAdvanceState(table, table.settings.times[constants.times.DISCUSS], true);
 			break;
-		case TABLE_DISCUSS:
+		case constants.states.DISCUSS:
 			clearVotes(table);
-			table.state = TABLE_DAY;
+			table.state = constants.states.DAY;
 
 			if (table.settings.turnOrder) {
 				table.currentPlayer = table.startPlayer;
 				table.message = `It is ${currentPlayer(table).name}'s turn to select a tool`;
 				table.demonMessage = undefined;
 				broadcastMessage(table, `It is <c>${currentPlayer(table).name}</c>'s turn to select a tool`);
-				table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[TURN]);
-				autoAdvanceRound(table, table.settings.times[TURN]);
+				autoAdvanceState(table, table.settings.times[constants.times.TURN], true);
 			} else {
 				table.message = DAY_PLAYER_MSG;
 				table.demonMessage = DAY_DEMON_MSG;
-				table.timers[ROUND_TIMER] = getTimerValue(table.settings.times[ROUND]);
-				table.roundTimerId = Number(setTimeout(timeoutRound.bind(null, table), 1000 * (table.settings.times[ROUND] + 1)));
+				autoAdvanceRound(table);
 			}
 			break;
 		// Handle a player move, either ask for second or move to night.
-		case TABLE_DAY:
+		case constants.states.DAY:
 			table.demonMessage = undefined;
 			clearVotes(table);
-			if (table.currentMove && table.currentMove.type !== PASS) {
+			if (table.currentMove) {
 				table.message = `${table.currentMove.playerName} wants to ${ITEM_PROPOSE_MSG[table.currentMove.type]}, second?`;
 				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> wants to ${ITEM_PROPOSE_MSG[table.currentMove.type]}, second?`);
-				table.state = TABLE_SECONDING;
-				table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[SECOND]);
-				autoAdvanceRound(table, table.settings.times[SECOND]);
+				table.state = constants.states.SECONDING;
+				autoAdvanceState(table, table.settings.times[constants.times.SECOND], true);
 			} else if (table.settings.turnOrder) {
 				var current = currentPlayer(table);
-				table.message = `${current.name} ${table.currentMove ? "passes": "ran out of time"}`; 
-				current.move = {type: PASS};
+				table.message = `${current.name} ${currentPlayer.move ? "passes": "ran out of time"}`; 
+				current.move = {type: constants.moves.PASS};
 				broadcastMessage(table, `<c>${current.name}</c> ${table.currentMove ? "passes": "ran out of time"}`);
-				table.state = TABLE_DISPLAY;
-				autoAdvanceRound(table, PASS_DISPLAY_SEC);
+				table.state = constants.states.DISPLAY;
+				autoAdvanceState(table, PASS_DISPLAY_SEC);
 			} else {
 				// If the last move was a pass and we are advancing, must be night.
 				table.message = "All players have made their move, night is falling...";
-				table.state = TABLE_DISPLAY;
-				clearRoundTimer(table);
-				autoAdvanceRound(table, ROUND_OVER_DISPLAY_SEC);
+				table.state = constants.states.DISPLAY;
+				clearTimer(table, constants.timers.ROUND);
+				autoAdvanceState(table, ROUND_OVER_DISPLAY_SEC);
 			}
 			clearVotes(table);
 			break;
 		// Move to voting or back to day
-		case TABLE_SECONDING:
+		case constants.states.SECONDING:
 			var tally = tallyVotes(table);
 			if (tally.yes.length > 0) {
 				table.message = `${table.currentMove.playerName} wants to ${ITEM_PROPOSE_MSG[table.currentMove.type]} and ${tally.yes[0]} seconded. Vote now.`;
 				broadcastMessage(table, `<c>${tally.yes[0]}</c> seconds <c>${table.currentMove.playerName}</c>'s proposal`);
-				table.state = TABLE_VOTING;
-				table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[VOTE]);
-				autoAdvanceRound(table, table.settings.times[VOTE]);
+				table.state = constants.states.VOTING;
+				autoAdvanceState(table, table.settings.times[constants.times.VOTE], true);
 			} else {
 				var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
 				tablePlayer.move.success = false;
 				table.message = `No player seconds ${table.currentMove.playerName}'s proposal`
 				broadcastMessage(table, `No player seconds <c>${table.currentMove.playerName}</c>'s proposal`);
-				table.state = TABLE_DISPLAY;
-				autoAdvanceRound(table, FAILED_SECOND_DISPLAY_SEC);
+				table.state = constants.states.DISPLAY;
+				autoAdvanceState(table, FAILED_SECOND_DISPLAY_SEC);
 			}
 			clearVotes(table);
 			break;
 		// Move to player select or back to day
-		case TABLE_VOTING:
+		case constants.states.VOTING:
 			var tally = tallyVotes(table, true);
 			var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
 			if (tally.yes.length >= tally.no.length) {
 				tablePlayer.move.success = true;
-				var action = table.currentMove.type === SALT ? "draw a line" : "select a target";
+				var action = table.currentMove.type === constants.items.SALT ? "draw a line" : "select a target";
 				table.message = `The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}. ${table.currentMove.playerName} will now ${action}.`;
 				broadcastMessage(table, `The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}.`);
-				table.state = TABLE_SELECT;
-				table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[SELECT]);
-				autoAdvanceRound(table, table.settings.times[SELECT]);
+				table.state = constants.states.SELECT;
+				autoAdvanceState(table, table.settings.times[constants.times.SELECT], true);
 			} else {
 				tablePlayer.move.success = false;
 				table.message = `The vote fails ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}`;
 				broadcastMessage(table, `The vote fails ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}.`);
-				table.state = TABLE_DISPLAY;
-				autoAdvanceRound(table, FAILED_VOTE_DISPLAY_SEC);
+				table.state = constants.states.DISPLAY;
+				autoAdvanceState(table, FAILED_VOTE_DISPLAY_SEC);
 			}
 			if (tally.yes.length > 0) broadcastMessage(table, `Yes: ${tally.yes.map(p => `<c>${p}</c>`).join(", ")}`);
 			if (tally.no.length > 0) broadcastMessage(table, `No: ${tally.no.map(p => `<c>${p}</c>`).join(", ")}`);
 			if (tally.abstain.length > 0) broadcastMessage(table, `Abstain: ${tally.abstain.map(p => `<c>${p}</c>`).join(", ")}`);
 			break;
 		// Move to display result
-		case TABLE_SELECT:
-			table.state = TABLE_DISPLAY;
+		case constants.states.SELECT:
+			table.state = constants.states.DISPLAY;
 
 			if (table.currentMove.targetName || (table.saltLine.start !== undefined && table.saltLine.end !== undefined)) {
 				var target = table.currentMove.targetName ? ` ${table.currentMove.targetName}` : "";
@@ -728,36 +681,36 @@ function advanceRound(table) {
 				table.resources[table.currentMove.type] -= 1;
 
 				switch (table.currentMove.type) {
-					case WATER:
+					case constants.items.WATER:
 						possessPlayer(table, table.currentMove.targetName, false);
 						var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
 						targetTablePlayer.isPurified = table.settings.waterPurify;
 						break;
-					case BOARD:
-					case ROD:
-					case EXORCISM:
-					case SALT:
-					case SMUDGE:
-						table.state = TABLE_INTERFERE;
-						table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[INTERFERE]);
-						var game = getGameByCode(table.code);
-						game.doInterfere = false;
-						game.saltFlip = [false, false];
+					case constants.items.BOARD:
+					case constants.items.ROD:
+					case constants.items.EXORCISM:
+					case constants.items.SALT:
+					case constants.items.SMUDGE:
+						table.state = constants.states.INTERFERE;
 						break;
 				}
 			} else {
 				var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
-				var action = table.currentMove.type === SALT ? "complete a line" : "select a target";
+				var action = table.currentMove.type === constants.items.SALT ? "complete a line" : "select a target";
 				table.message = `${table.currentMove.playerName} failed to ${action} and forfeits their move.`;
 				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> failed to ${action} and forfeits their move.`);
 				tablePlayer.move.success = false;
 			}
-			autoAdvanceRound(table, table.state === TABLE_INTERFERE ? table.settings.times[INTERFERE] + 1 : SHOW_RESULT_DISPLAY_SEC);
+			if (table.state === constants.states.INTERFERE) {
+				autoAdvanceState(table, table.settings.times[constants.times.INTERFERE], true);
+			} else {
+				autoAdvanceState(table, SHOW_RESULT_DISPLAY_SEC);
+			}
 			break;
-		case TABLE_INTERFERE:
+		case constants.states.INTERFERE:
 			var game = getGameByCode(table.code);
 			var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
-			table.state = TABLE_DISPLAY;
+			table.state = constants.states.DISPLAY;
 
 			if (game.doInterfere) { 
 				game.anyInterfere = true;
@@ -767,13 +720,13 @@ function advanceRound(table) {
 			demonPlayer.socket.emit("update interfere", game.interfereUses);
 
 			switch (table.currentMove.type) {
-				case BOARD:
+				case constants.items.BOARD:
 					var is = game.possessedPlayers.includes(targetTablePlayer.name);
 					if (game.doInterfere) is = !is;
 					table.message = `The board reveals that ${targetTablePlayer.name} ${is ? "IS" : "IS NOT"} possessed`;
 					broadcastMessage(table, `The board reveals that <c>${targetTablePlayer.name}</c> <b>${is ? "IS" : "IS NOT"}</b> possessed`);
 					break;
-				case ROD:
+				case constants.items.ROD:
 					var is = game.possessedPlayers.includes(targetTablePlayer.name);
 					if (game.doInterfere) is = !is;
 					game.rodResult = is;
@@ -782,10 +735,10 @@ function advanceRound(table) {
 					var tablePlayer = getTablePlayerByName(table.currentMove.playerName, table);
 					var player = getPlayerBySessionId(tablePlayer.sessionId);
 					player.socket.emit("rod", is);
-					table.state = TABLE_ROD_INTERPRET;
-					table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[ROD]);
+					table.state = constants.states.INTERPRET;
+					table.timers[constants.timers.MOVE] = getTimerValue(table.settings.times[constants.times.INTERPRET]);
 					break;
-				case EXORCISM:
+				case constants.items.EXORCISM:
 					var is = game.possessedPlayers.includes(targetTablePlayer.name);
 					if (game.doInterfere) is = !is;
 					table.message = `It appears that ${targetTablePlayer.name} ${is ? "IS" : "IS NOT"} possessed`;
@@ -793,11 +746,11 @@ function advanceRound(table) {
 					if (!game.doInterfere) possessPlayer(table, table.currentMove.targetName, false);
 
 					targetTablePlayer.isExorcised = true;
-					if (!targetTablePlayer.move) targetTablePlayer.move = {type: PASS};
+					if (!targetTablePlayer.move) targetTablePlayer.move = {type: constants.moves.PASS};
 					var targetPlayer = getPlayerBySessionId(targetTablePlayer.sessionId);
 					targetPlayer.socket.emit("pop up", "You are unconscious until tomorrow, do not speak!");
 					break;
-				case SALT:
+				case constants.items.SALT:
 					// Collect salt groups.
 					var groups = [[], []];
 					table.saltLine.result = [false, false];
@@ -823,7 +776,7 @@ function advanceRound(table) {
 					broadcastMessage(table, `Group: ${groups[0].map(p => `<c>${p}</c>`).join(", ")} ${table.saltLine.result[0] ? "DOES" : "DOES NOT"} contain a possessed player.`);
 					broadcastMessage(table, `Group: ${groups[1].map(p => `<c>${p}</c>`).join(", ")} ${table.saltLine.result[1] ? "DOES" : "DOES NOT"} contain a possessed player.`);
 					break;
-				case SMUDGE:
+				case constants.items.SMUDGE:
 					table.message = `${targetTablePlayer.name} has been warded against possession next round.`;
 					targetTablePlayer.isSmudged = true;
 					if (!(game.doInterfere || game.possessedPlayers.includes(table.currentMove.playerName))) {
@@ -833,11 +786,11 @@ function advanceRound(table) {
 					break;
 			}
 			var wait = SHOW_RESULT_DISPLAY_SEC;
-			if (table.state === TABLE_ROD_INTERPRET) wait = table.settings.times[ROD] + 1;
-			if (table.currentMove.type === SALT) wait *= 2;
-			autoAdvanceRound(table, wait);
+			if (table.state === constants.states.INTERPRET) wait = table.settings.times[constants.times.INTERPRET];
+			if (table.currentMove.type === constants.items.SALT) wait *= 2;
+			autoAdvanceState(table, wait);
 			break;
-		case TABLE_ROD_INTERPRET:
+		case constants.states.INTERPRET:
 			var game = getGameByCode(table.code);
 			if (game.rodDisplay === undefined) {
 				table.message = `${table.currentMove.playerName} chooses not to share if ${table.currentMove.targetName} is possessed`;
@@ -848,18 +801,19 @@ function advanceRound(table) {
 				table.message = `${table.currentMove.playerName} reports that ${table.currentMove.targetName} ${is ? "IS" : "IS NOT"} possessed`;
 				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> reports that <c>${table.currentMove.targetName}</c> ${is ? "IS" : "IS NOT"} possessed`);
 			}
-			table.state = TABLE_DISPLAY;
-			autoAdvanceRound(table, SHOW_RESULT_DISPLAY_SEC);
+			table.state = constants.states.DISPLAY;
+			autoAdvanceState(table, SHOW_RESULT_DISPLAY_SEC);
 			break;
-		case TABLE_DISPLAY:
-			handleRoundEnd(table);
+		case constants.states.DISPLAY:
+			handleTurnEnd(table);
 			break;
-		case TABLE_END:
+		case constants.states.END:
 			clearMoves(table);
-			table.state = TABLE_LOBBY;
+			table.state = constants.states.LOBBY;
 			table.msg = undefined;
-			// Reset some state.
+			// Reset players.
 			for (var tablePlayer of table.players) {
+				tablePlayer.isDemon = false;
 				tablePlayer.isDamned = false;
 				tablePlayer.isExorcised = false;
 				tablePlayer.isSmudged = false;
@@ -872,84 +826,79 @@ function advanceRound(table) {
 	updateTable(table);	
 }
 
-function autoAdvanceRound(table, delay) {
-	table.timerId = Number(setTimeout(advanceRound.bind(null, table), 1000 * (delay + 1)));
+function autoAdvanceState(table, delay, display=false) {
+	const game = getGameByCode(table.code);
+	if (!game) return;
+	game.timers[constants.timers.MOVE] = Number(setTimeout(advanceState.bind(null, table), 1000 * delay))
+	if (display) table.timers[constants.timers.MOVE] = getTimerValue(delay);
+}
+
+function autoAdvanceRound(table) {
+	const game = getGameByCode(table.code);
+	if (!game) return;
+	game.timers[constants.timers.ROUND] = Number(setTimeout(timeoutRound.bind(null, table), 1000 * table.settings.times[constants.times.ROUND]));
+	table.timers[constants.timers.ROUND] = getTimerValue(table.settings.times[constants.times.ROUND]);
 }
 
 function timeoutRound(table) {
-	table.timeout = true;
-	if (table.state === TABLE_DAY) {
+	const game = getGameByCode(table.code);
+	if (!game) return;
+	game.timeout = true;
+	if (table.state === constants.states.DAY) {
 		table.message = "The sun is settings, night is falling...";
-		table.state = TABLE_DISPLAY;
-		autoAdvanceRound(table, ROUND_OVER_DISPLAY_SEC);
+		table.state = constants.states.DISPLAY;
+		autoAdvanceState(table, ROUND_OVER_DISPLAY_SEC);
 		updateTable(table);
 	}
 }
 
-function handleRoundEnd(table) {
+function handleTurnEnd(table) {
+	var game = getGameByCode(table.code);
+	game.doInterfere = false;
+	game.saltFlip = [false, false];
+	
 	table.saltLine = {start: undefined, end: undefined};
 	table.currentMove = undefined;
 	clearVotes(table);
 	advanceCurrentPlayer(table);
-	var game = getGameByCode(table.code);
+
 	if (game.possessedPlayers.length === 0) {
-		table.state = TABLE_END;
+		table.state = constants.states.END;
 		table.message = PLAYER_WIN_MESSAGE;
 		var winners = [];
 		for (var tablePlayer of table.players) {
 			if (tablePlayer.isDemon || game.damnedPlayers.includes(tablePlayer.name)) {
 				tablePlayer.isDamned = true;
-				tablePlayer.isDemon = false;
 			} else {
 				winners.push(tablePlayer.name);
 			}
 		}
 		broadcastMessage(table, `The virtuous win: ${winners.map(p => `<c>${p}</c>`).join(", ")}!`);
-		table.demonId = undefined;
-		clearMoves(table);
-		clearTimer(table);
-		clearRoundTimer(table);
+		handleGameEnd(table);
 	} else if (isStillDay(table)) {
-		table.state = TABLE_DAY;
+		table.state = constants.states.DAY;
 		if (table.settings.turnOrder) {
 			table.message = `It is ${currentPlayer(table).name}'s turn to select a tool`;
 			broadcastMessage(table, `It is <c>${currentPlayer(table).name}</c>'s turn to select a tool`);
-			table.timers[MOVE_TIMER] = getTimerValue(table.settings.times[TURN]);
-			autoAdvanceRound(table, table.settings.times[TURN]);
+			autoAdvanceState(table, table.settings.times[constants.times.TURN], true);
 		} else {
 			table.message = DAY_PLAYER_MSG;
 			table.demonMessage = DAY_DEMON_MSG;
 		}
 	} else if (game.possessedPlayers.length >= (table.players.length - 1) / 2) {
-		table.state = TABLE_END;
+		table.state = constants.states.END;
 		table.message = DEMON_WIN_MESSAGE;
 		var winners = [];
 		for (var tablePlayer of table.players) {
 			if (tablePlayer.isDemon || game.possessedPlayers.includes(tablePlayer.name)) {
 				tablePlayer.isDamned = true;
-				tablePlayer.isDemon = false;
 				winners.push(tablePlayer.name);
 			}
 		}
 		broadcastMessage(table, `The damned win: ${winners.map(p => `<c>${p}</c>`).join(", ")}!`);
-		table.demonId = undefined;
-		clearMoves(table);
-		clearTimer(table);
-		clearRoundTimer(table);
+		handleGameEnd(table);
 	} else {
-		table.state = TABLE_NIGHT;
 		handleNewRound(table);
-		
-		var game = getGameByCode(table.code);
-		table.message = `Night falls... there ${game.anyInterfere ? "WAS" : "WAS NOT"} interference during the round.`;
-		broadcastMessage(table, `There <b>${game.anyInterfere ? "WAS" : "WAS NOT"}</b> interference during the round.`);
-		table.demonMessage = NIGHT_DEMON_MSG;
-
-		table.currentPlayer = undefined;
-		game.anyInterfere = false;
-		clearMoves(table);
-		clearTimer(table);
-		clearRoundTimer(table);
 	}
 }
 
@@ -957,7 +906,8 @@ function isStillDay(table) {
 	if (table.settings.turnOrder) {
 		if (table.currentPlayer === table.startPlayer) return false;
 	} else {
-		if (table.timeout) return false;
+		var game = getGameByCode(table.code);
+		if (!game || game.timeout) return false;
 	}
 
 	// Check if any player can make a move.
@@ -976,28 +926,31 @@ function isStillDay(table) {
 	return false;
 }
 
-function handleNewGame(table) {
-	if (table.players.length < table.settings.minPlayers) {
-		emitErrorToTable(table, `Cannot being game with less than ${table.settings.minPlayers} players!`);
-		return false;
-	}
-	// Game holds secret information.
-	var game = getGameByCode(table.code);
-	if (!game) {
-		game = {
-			tableCode: table.code,
-		};
-		games.push(game);
-	}
-	game.interfereUses = {};
-	game.interfereUses[WATER] = 0;
-	game.interfereUses[BOARD] = 1;
-	game.interfereUses[ROD] = 1;
-	game.interfereUses[EXORCISM] = 1;
-	game.interfereUses[SALT] = 1;
-	game.interfereUses[SMUDGE] = 1;
+function handleGameEnd(table) {
+	table.demonId = undefined;
+	clearMoves(table);
+	clearTimer(table, constants.timers.MOVE);
+	clearTimer(table, constants.timers.ROUND);
+}
 
-	game.possessedPlayers = [];
+function handleNewGame(table) {
+	clearMoves(table);
+	clearVotes(table);
+
+	// Game holds secret information.
+	games[table.code] = {
+		interfereUses: {
+			[constants.items.WATER]: 0,
+			[constants.items.BOARD]: 1,
+			[constants.items.ROD]: 1,
+			[constants.items.EXORCISM]: 1,
+			[constants.items.SALT]: 1,
+			[constants.items.SMUDGE]: 1,
+		},
+		possessedPlayers: [],
+		timers: {},
+		votes: {},
+	}
 
 	// Clear chat logs
 	chatLogs[table.code] = [];
@@ -1008,20 +961,20 @@ function handleNewGame(table) {
 	selectDemonCandidate(table, true);
 
 	// Reset resources
-	table.resources = {};
+	table.resources = {
+		[constants.items.WATER]: -1,
+	};
 	table.round = 0;
-	table.resources[WATER] = -1;
 	table.saltLine = {start: undefined, end: undefined};
 
 	// Reset timers
-	table.timers = {};
-	table.timers[ROUND_TIMER] = false;
-	table.timers[MOVE_TIMER] = false;
+	table.timers = {
+		[constants.timers.ROUND]: false,
+		[constants.timers.MOVE]: false,
+	};
 
 	// Set turn order
 	table.startPlayer = undefined;
-
-	return true;
 }
 
 function selectDemonCandidate(table, start=false) {
@@ -1063,21 +1016,32 @@ function nextPlayer(table, index) {
 }
 
 function handleNewRound(table) {
-	table.round += 1;
-
 	var game = getGameByCode(table.code);
+
+	table.round += 1;
+	table.state = constants.states.NIGHT;
+	table.demonMessage = NIGHT_DEMON_MSG;
+
+	clearMoves(table);
+	clearVotes(table);
+	
+	if (table.round > 1) {
+		table.message = `Night falls... there ${game.anyInterfere ? "WAS" : "WAS NOT"} interference during the round.`;
+		broadcastMessage(table, `There <b>${game.anyInterfere ? "WAS" : "WAS NOT"}</b> interference during the round.`);
+	} else {
+		table.message = NIGHT_PLAYER_MSG;
+	}
+
 	game.damnedPlayers = [];
-	game.smudgedPlayer = undefined;
-	var demonPlayer = getPlayerBySessionId(table.demonId);
-	demonPlayer.socket.emit("smudged player");
-	// Clear exorcism and smudge stick
-	for (var player of table.players) {
+	game.anyInterfere = false;
+	game.timeout = false;
+
+	// Clear lasting states
+	table.players.forEach(function (player) {
 		player.isExorcised = false;
 		player.wasSmudged = player.isSmudged;
-		player.isSmudged = false;
 		player.wasPurified = player.isPurified;
-		player.isPurified = false;
-	}
+	});
 
 	if (table.settings.turnOrder) {
 		advanceStartPlayer(table);
@@ -1086,12 +1050,12 @@ function handleNewRound(table) {
 
 	// Update resources
 	table.resources = {
-		BOARD: 1,
-		WATER: Math.floor(Math.min(table.players.length / 3, table.resources[WATER] + 1)),
-		ROD: 1,
-		EXORCISM: 1,
-		SALT: 1,
-		SMUDGE: 1,
+		[constants.items.BOARD]: 1,
+		[constants.items.WATER]: Math.floor(Math.min(table.players.length / 3, table.resources[constants.items.WATER] + 1)),
+		[constants.items.ROD]: 1,
+		[constants.items.EXORCISM]: 1,
+		[constants.items.SALT]: 1,
+		[constants.items.SMUDGE]: 1,
 	};
 }
 
@@ -1101,40 +1065,33 @@ function possessPlayer(table, targetName, doPossess) {
 	var tablePlayer = getTablePlayerByName(targetName, table);
 	var targetPlayer = getPlayerBySessionId(tablePlayer.sessionId);
 	if (doPossess) {
-		if (game.possessedPlayers.includes(tablePlayer.name)) {
-			return false;
-		}
+		if (game.possessedPlayers.includes(tablePlayer.name)) return false;
 		game.possessedPlayers.push(tablePlayer.name);
-		demonPlayer.socket.emit("possessed players", game.possessedPlayers);
 		chatLogs[table.code][tablePlayer.name] = [];
 		sendDemonMessage(table, "You have been possessed!", tablePlayer.name);
 	} else {
-		if (!game.possessedPlayers.includes(tablePlayer.name)) {
-			return false;
-		}
+		if (!game.possessedPlayers.includes(tablePlayer.name)) return false;
 		removeByValue(game.possessedPlayers, tablePlayer.name);
-		demonPlayer.socket.emit("possessed players", game.possessedPlayers);
 		game.damnedPlayers.push(tablePlayer.name);
 	}
+	demonPlayer.socket.emit("possessed players", game.possessedPlayers);
 	targetPlayer.socket.emit("possession", doPossess);
 	return true;
 }
 
 function clearMoves(table) {
-	for (var tablePlayer of table.players) {
-		tablePlayer.move = undefined;
-	}
+	table.players.forEach(p => p.move = undefined);
 	table.currentMove = undefined;
 }
 
 function clearVotes(table) {
-	for (var tablePlayer of table.players) {
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
-		if (!player) continue;
-		tablePlayer.voted = false;
-		tablePlayer.vote = undefined;
+	if (!table) return;
+	table.players.forEach(function (player) {
+		player.voted = false;
 		player.vote = undefined;
-	}
+	});
+	var game = getGameByCode(table.code);
+	if (game) game.votes = {};
 }
 
 function tallyVotes(table, makePublic) {
@@ -1143,28 +1100,22 @@ function tallyVotes(table, makePublic) {
 		no: [],
 		abstain: [],
 	};
+	const game = getGameByCode(table.code);
 	for (var tablePlayer of table.players) {
 		if (tablePlayer.isDemon) continue;
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
-		if (!player) continue;
+		if (tablePlayer.isExorcised) continue;
 
-		// Exorcised players should not be able to vote, but just in case.
-		if (tablePlayer.isExorcised) {
-			player.vote = undefined;
-			tablePlayer.voted = false;
-		}
 		// Tally vote.
-		if (!tablePlayer.voted) {
-			tally.abstain.push(tablePlayer.name)
-		} else if (player.vote) {
+		const vote = game.votes[tablePlayer.name];
+		if (vote === undefined) {
+			tally.abstain.push(tablePlayer.name);
+		} else if (vote) {
 			tally.yes.push(tablePlayer.name);
 		} else {
 			tally.no.push(tablePlayer.name);
 		}
 		// Show the vote at the end of the round.
-		if (makePublic) {
-			tablePlayer.vote = player.vote;
-		}
+		if (makePublic) tablePlayer.vote = vote;
 	}
 	return tally;
 }
@@ -1172,7 +1123,7 @@ function tallyVotes(table, makePublic) {
 ///// Utility functions \\\\\
 
 function checkName(socket, name) {
-	if (name.match("^[\\d\\w]+$")) return true;
+	if (name.match("^[\\d\\w\\s!]+$")) return true;
 	socket.emit("server error", `Invalid name: '${name}', alphanumeric only!`);
 	return false;
 }
@@ -1182,17 +1133,16 @@ Number.prototype.mod = function(n) {
 }
 
 function getAvailableColor(table) {
-	for (var color of PLAYER_COLORS) {
-		if (table.playerColors.includes(color)) continue;
+	const tableColors = table.players.map(p => p.color);
+	for (var color of constants.PLAYER_COLORS) {
+		if (tableColors.includes(color)) continue;
 		return color;
 	}
 }
 
-function isTableOwner(playerId, table) {
-	console.log(`${playerId}`);
-	console.log(`${table.players[0].socketId}`);
+function isTableOwner(sessionId, table) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	return table && table.players && table.players.length > 0 && table.players[0].socketId === playerId;
+	return table && table.players && table.players.length > 0 && table.players[0].sessionId === sessionId;
 }
 
 function removeByValue(arr, val) {
@@ -1207,74 +1157,69 @@ function getTimerValue(sec) {
 
 ////// Connection logic \\\\\\\\\\
 
-function handleNewConnection(socket, sessionId) {
+function handleNewConnection(socket) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 
 	console.log("NEW CONNECTION");
 	console.log(cookie.parse(socket.request.headers.cookie)["connect.sid"]);
+	let sessionId = DEBUG ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
+	socket.emit("player id", sessionId);
 
-	var sessionId = DEBUG ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
-	//console.log("SESSION ID: " + sessionId); 
-	var player = getPlayerBySessionId(sessionId);
-	if (player) {
-		socket.emit("server error", "Session for player already exists, you cheater!");
-		player.socket.emit("server error", "Session detected in another tab, please don't do that.");
-		return;
-	}
-	player = getInactiveBySessionId(sessionId);
-	if (player) {
-		players.push(player);
-		console.log("FOUND INACTIVE PLAYER! " + sessionId);
-		removeByValue(inactive, player);
-		player.socket = socket;
-		if (player.tableCode) {
-			console.log("PLAYER HAS A TABLE CODE! " + sessionId);
-			var table = getTableByCode(player.tableCode);
-			if (table) {
-				console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
-				var tablePlayer = getTablePlayerBySessionId(sessionId, table);
-				tablePlayer.socketId = socket.id;
-				tablePlayer.active = true;
-				//Update player on the state of the world.
-				updateTable(table);
-				var game = getGameByCode(table.code);
-				// Update demon on state of the world.
-				if (tablePlayer.isDemon) {
-					player.socket.emit("possessed players", game.possessedPlayers);
-					player.socket.emit("update interfere", game.interfereUses);
-					player.socket.emit("smudged player", game.smudgedPlayer);
-				}
-				if (game && game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
-				for (var chat in chatLogs[table.code]) {
-					if (chat === GENERAL) {
-						for (var l of chatLogs[table.code][chat]) {
-							socket.emit("chat msg", l.msg, l.player);
-						}
-					} else if (tablePlayer.isDemon || chat === tablePlayer.name) {
-						for (var l of chatLogs[table.code][chat]) {
-							socket.emit("demon msg", l.msg, l.player);
-						}
-					}
-				}
-			} else {
-				player.tableCode = undefined;
-				clearTable(socket);
-			}
-		} else {
-			clearTable(socket);
-		}
-	} else { 
-		console.log("ADDING NEW PLAYER FOR " + sessionId);
-		players.push({
-			// Session/connection
+	let player = getPlayerBySessionId(sessionId);
+	if (!player) {
+		players[sessionId] = {
 			socket: socket,
 			sessionId: sessionId,
 			tableCode: undefined,
-			// Secret info
-			vote: undefined,
-			possessed: false,
-		});
+		};
+		socketMap[socket.id] = sessionId;
 		clearTable(socket);
+		return
+	}
+
+	if (player.active) {
+		socket.emit("server error", "Found existing session in another tab.");
+		return;
+	}
+
+	socketMap[socket.id] = sessionId;
+	player.socket = socket;
+	player.active = true;
+
+	let table = getTableByCode(player.tableCode);
+	if (!table) {
+		player.tableCode = undefined;
+		clearTable(socket);
+	}
+
+	// console.log("PLAYER HAS A TABLE CODE! " + sessionId);
+	// console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
+
+	var tablePlayer = getTablePlayerBySessionId(sessionId, table);
+	tablePlayer.active = true;
+	updateTable(table);
+
+	var game = getGameByCode(table.code);
+	if (game) {
+		// Update demon on state of the world.
+		if (tablePlayer.isDemon) {
+			player.socket.emit("possessed players", game.possessedPlayers);
+			player.socket.emit("update interfere", game.interfereUses);
+			player.socket.emit("smudged player", game.smudgedPlayer);
+		}
+		if (game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
+	}
+
+	for (var chat in chatLogs[table.code]) {
+		if (chat === GENERAL) {
+			for (var l of chatLogs[table.code][chat]) {
+				socket.emit("chat msg", l.msg, l.player);
+			}
+		} else if (tablePlayer.isDemon || chat === tablePlayer.name) {
+			for (var l of chatLogs[table.code][chat]) {
+				socket.emit("demon msg", l.msg, l.player);
+			}
+		}
 	}
 }
 
@@ -1284,28 +1229,48 @@ function clearTable(socket) {
 
 function playerDisconnected(socket) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var player = getPlayerBySocketId(socket.id);
-	removeByValue(players, player);
-	var table = getTableBySocketId(socket.id);
+
+	if (!(socket.id in socketMap)) return;
+	const sessionId = socketMap[socket.id]
+	delete socketMap[socket.id];
+
+	if (!(sessionId in players)) return;
+	const player = players[sessionId];
+
+	player.socket = undefined;
+	player.active = false;
+	
+	// TODO: db interaction
+	// TODO: set timer to delete inactive playre
+
+	var table = getTableByCode(player.tableCode);
 	if (table) { 
 		var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
 		tablePlayer.active = false;
-		var anyPlayers = false;
-		for (var tP of table.players) {
-			if (tP.active) {
-				anyPlayers = true;
-				break;
-			}
-		}
-		if (anyPlayers) {
+
+		if (table.players.reduce((acc, p) => acc || p.active, false)) {
 			updateTable(table);
 		} else {
 			setTimeout(deleteTable.bind(null, table), INACTIVE_TABLE_DELETION_SEC * 1000);
 		}
-		player.socket = undefined;
-		inactive.push(player);
-		console.log(`PUSHING PLAYER WITH SESSION ID ${player.sessionId} TO INACTIVE`);
 	}
+}
+
+// Getters / setters / deleters -- handles in mem and database interactions
+
+function deleteGame(code) {
+	delete games[code];
+}
+
+function deleteChat(code) {
+	delete chatLogs[code];
+}
+
+function deleteTable(table) {
+	// Delete game and table.
+	deleteGame(table.code);
+	deleteChat(table.code);
+	delete tables[code];
 }
 
 // Simple getters TODO: refactor this?
@@ -1324,73 +1289,28 @@ function getTablePlayerBySessionId(sessionId, table) {
 
 function getTablePlayerByName(name, table) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (table && table.players) {
-		for (var player of table.players) {
-			if (player.name === name) {
-				return player
-			}
-		}
-	}
-	return false;
+	if (!table) return undefined;
+	return table.players.find(p => p.name === name);
 }
 
 function getPlayerBySocketId(socketId) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	for (var i = 0; i < players.length; i++) {
-		if (players[i].socket.id === socketId) {
-			return players[i];
-		}
-	}
-	return false;
+	return getPlayerBySessionId(socketMap[socketId]);
 }
 
 function getPlayerBySessionId(sessionId) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	for (var player of players) {
-		if (player.sessionId === sessionId) return player;
-	}
-	return false;
-}
-
-function getInactiveBySessionId(sessionId) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	for (var i = 0; i < inactive.length; i++) {
-		if (inactive[i].sessionId === sessionId) {
-			return inactive[i];
-		}
-	}
-	return false;
+	return players[sessionId];
 }
 
 function getTableByCode(code) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	code = code.toUpperCase();
-	for (var i = 0; i < tables.length; i++) {
-		if (tables[i].code === code) {
-			return tables[i];
-		}
-	}
-	return false;
+	if (!code) return undefined;
+	return tables[code.toUpperCase()];
 }
 
 function getTableBySocketId(socketId) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	for (var table of tables) {
-		for (var tablePlayer of table.players) {
-			if (tablePlayer.socketId === socketId) {
-				return table;
-			}
-		}
-	}
-	return false;
+	var player = getPlayerBySocketId(socketId);
+	return player ? getTableByCode(player.tableCode) : undefined;
 }
 
 function getGameByCode(code) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	for (var i = 0; i < games.length; i++) {
-		if (games[i].tableCode === code) {
-			return games[i];
-		}
-	}
-	return false;
+	return games[code.toUpperCase()];
 }

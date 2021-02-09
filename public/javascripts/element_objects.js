@@ -370,7 +370,6 @@ class DragableDivider extends ButtonMixin(TextElement) {
 				if (this.center) newY += this.dims().height / 2;
 				if (!this.absolute) newY = (newY - hOff) / cvH;
 				if (Math.abs(1 - this.yy / newY) < 0.01) return;
-				console.log(`${newY} ${this.yMin} ${this.yMax}`);
 				this.yy = Math.max(this.yMin, Math.min(this.yMax, newY));
 				this.callback();
 			}

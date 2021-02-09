@@ -12,7 +12,7 @@ function init() {
 
 	initInputs();
 	initLabels();
-	changeState(INIT);
+	changeState(constants.states.INIT);
 
 	handleResize();
 }
@@ -106,10 +106,10 @@ function handleKeyDown(event) {
 			ALT = true;
 			break;
 		case 27: 	// esc
-			if (gameState === TABLE_LOBBY) {
+			if (gameState === constants.states.LOBBY) {
 				buttons["leave table"].click();
 			} else {
-				buttons[PASS].click();
+				buttons[constants.moves.PASS].click();
 			}
 			break;
 	}
@@ -220,15 +220,16 @@ function tick() {
 	for (var button of getButtons()) button.checkHold(cursorX, cursorY);
 
 	switch(gameState) {
-		case INIT:
-			drawGroups["init"].draw();
-			labels["error msg"].draw();
+		case constants.states.INIT:
+			drawGroups["main menu"].draw();
+			labels["disconnected"].draw();
+			drawGroups["bottom bar"].draw();
 			break;
-		case MAIN_MENU:
+		case constants.states.MAIN_MENU:
 			drawGroups["main menu"].draw();
 			drawGroups["bottom bar"].draw();
 			break;
-		case TABLE_LOBBY:
+		case constants.states.LOBBY:
 			drawGroups["chat"].draw();
 			drawTable();
 			if (isTableOwner()) {
@@ -294,18 +295,18 @@ function drawPlayerView() {
 	drawTable();
 
 	switch (gameState) {
-		case DEMON_SELECTION:
+		case constants.states.DEMON_SELECTION:
 			break;
-		case TABLE_NIGHT:
+		case constants.states.NIGHT:
 			break;
-		case TABLE_DISCUSS:
+		case constants.states.DISCUSS:
 			buttons["ready"].draw();
 			break;
-		case TABLE_DAY:
+		case constants.states.DAY:
 			drawTableItems();
 			break;
-		case TABLE_SECONDING:
-		case TABLE_VOTING:
+		case constants.states.SECONDING:
+		case constants.states.VOTING:
 			labels[theTable.currentMove.type].draw();
 			if (thePlayer.isExorcised) {
 				drawGroups["voting"].disable();
@@ -313,20 +314,20 @@ function drawPlayerView() {
 				drawGroups["voting"].draw();
 			}
 			break;
-		case TABLE_SELECT:
+		case constants.states.SELECT:
 			labels[theTable.currentMove.type].draw();
 			break;
-		case TABLE_DISPLAY:
-			if (theTable.currentMove && ![PASS, SALT].includes(theTable.currentMove.type)) labels[theTable.currentMove.type].draw();
+		case constants.states.DISPLAY:
+			if (theTable.currentMove && ![constants.moves.PASS, constants.items.SALT].includes(theTable.currentMove.type)) labels[theTable.currentMove.type].draw();
 			break;
-		case TABLE_INTERFERE:
+		case constants.states.INTERFERE:
 			labels[theTable.currentMove.type].draw();
 			break;
-		case TABLE_ROD_INTERPRET:
-			labels[ROD].draw();
+		case constants.states.INTERPRET:
+			labels[constants.items.ROD].draw();
 			drawGroups["rod"].draw();
 			break;
-		case TABLE_END:
+		case constants.states.END:
 			if (isTableOwner()) {
 				buttons["finish game"].enable();
 				buttons["finish game"].draw();
@@ -338,22 +339,22 @@ function drawPlayerView() {
 function drawDemonView() {
 	drawDemonControlPanel();
 	switch (gameState) {
-		case TABLE_NIGHT:
+		case constants.states.NIGHT:
 			break;
-		case TABLE_DISCUSS:
+		case constants.states.DISCUSS:
 			break;
-		case TABLE_DAY:
+		case constants.states.DAY:
 			break;
-		case TABLE_SECONDING:
-		case TABLE_VOTING:
+		case constants.states.SECONDING:
+		case constants.states.VOTING:
 			break;
-		case TABLE_SELECT:
+		case constants.states.SELECT:
 			break;
-		case TABLE_DISPLAY:
+		case constants.states.DISPLAY:
 			break;
-		case TABLE_INTERFERE:
+		case constants.states.INTERFERE:
 			break;
-		case TABLE_END:
+		case constants.states.END:
 			break;
 	}
 }
@@ -406,28 +407,28 @@ function drawHowTo() {
 			var textSize = 15;
 
 			var imageDesc = {
-				BOARD: [
+				[constants.items.BOARD]: [
 					"Spirit Board: a player uses the spirit board to ask if another player is currently possessed.",
 					"    Players may consult the spirit board once per round. The answer is displayed to all players.",
 					"    The demon may interfere with the spirit board a limited number of times, making it give the wrong answer.",
 					"    The demon starts with one chance to interfere, and gains one use every time an exorcism is performed.",
 				],
-				ROD: [
+				[constants.items.ROD]: [
 					"Divining Rod: a player uses the diving rod to determine if another player is currently possessed.",
 					"    Players may use the divining rod once per round. Only the user of the rod is told the answer.",
 				],
-				WATER: [
+				[constants.items.WATER]: [
 					"Holy Water: a player uses one vial of holy water to free another player from possession.",
 					"    Players gain one vial of holy water per round, unused vials accumulate across rounds.",
 				],
-				EXORCISM: [
+				[constants.items.EXORCISM]: [
 					"Cross: a player uses the cross to perform an exorcism on another player, freeing them from possession.",
 					"    Players may perform one exorcism per round. The target player is knocked unconscious until the next round,",
 					"    unable to speak or vote (they are not counted in vote ratio).  Performing an exorcism gives the demon a ",
 					"    window into the world, granting them one additional chance to interfere with the Spirit Board.",
 				],
 			};
-			var items = [BOARD, ROD, WATER, EXORCISM];
+			var items = [constants.items.BOARD, constants.items.ROD, constants.items.WATER, constants.items.EXORCISM];
 
 			for (var item of items) {
 				if (Math.round(imageY * 100) % 2 == 1)
@@ -485,7 +486,8 @@ function drawSettings() {
 
 	// Items
 	drawRect("#666666", 0.03, 0.25, 0.46, 0.6);
-	var half = Math.ceil(ITEMS.length / 2);
+	const ITEMS = Object.values(items);
+	var half = Math.ceil(Object.keys(constants.items).length / 2);
 	var itemHeight = (0.6 * 0.8) / half;
 	var margin = (0.6 - itemHeight * half) / (half + 1);
 	for (var i = 0; i < ITEMS.length; i++) {
@@ -535,7 +537,7 @@ function drawAvatarSelection() {
 
 	// Draw avatars
 	const perRow = 10;
-	for (var i = 0; i < AVATAR_COUNT; i++) {
+	for (var i = 0; i < constants.AVATAR_COUNT; i++) {
 		var row = i % perRow;
 		var col = Math.floor(i / perRow);
 		if (i === thePlayer.avatarId) {
@@ -548,8 +550,8 @@ function drawAvatarSelection() {
 
 	var gapWidth = 0.005 * cvW;
 	var boxWidth = 0.06 * cvW;
-	for (var i = 0; i < 14; i ++) {
-		var color = PLAYER_COLORS[i];
+	for (var i = 0; i < constants.PLAYER_COLORS.length; i ++) {
+		var color = constants.PLAYER_COLORS[i];
 		var boxX = x + gapWidth * (i + 1) + boxWidth * i;
 		var boxY = y + 0.8 * cvH;
 		drawColorSelector(color, boxX, boxY, boxWidth, boxWidth);
@@ -567,7 +569,8 @@ function drawColorSelector(color, x, y, w, h) {
 	buttons[`color ${color}`].width = w / cvW;
 	buttons[`color ${color}`].height = h / cvH;
 	buttons[`color ${color}`].draw();
-	if (theTable.playerColors.includes(color)) {
+	const tableColors = theTable.players.map(p => p.color);
+	if (tableColors.includes(color)) {
 		buttons[`color ${color}`].disable();
 		buttons[`color ${color}`].show();
 		if (color !== thePlayer.color) ctx.drawImage(IMAGES[FAIL_X].img, x, y, w, h);
@@ -616,7 +619,7 @@ function drawDemonControlPanel() {
 	var margin = Math.min(20, (0.96 * cvW - padRad * (theTable.players.length - 1) * 2) / theTable.players.length);
 
 	var x = 0.02 * cvW + wOff;
-	if (theTable.currentMove && theTable.currentMove.type === SALT) drawDemonSalt(x, 0.03 * cvH + hOff, 0.17 * cvH + hOff, padRad, margin);
+	if (theTable.currentMove && theTable.currentMove.type === constants.items.SALT) drawDemonSalt(x, 0.03 * cvH + hOff, 0.17 * cvH + hOff, padRad, margin);
 
 	x += padRad + margin;
 	var y = 0.1 * cvH + hOff;
@@ -628,15 +631,15 @@ function drawDemonControlPanel() {
 
 	// Demon message
 	drawText(theTable.demonMessage ? theTable.demonMessage : theTable.message, 0.16, 0.23, 20, "left", false, 0.4 * cvW);
-	if (gameState == TABLE_INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups[`${theTable.currentMove.type === SALT ? "salt " : ""}interfere`].draw();
+	if (gameState == constants.states.INTERFERE && interfereUses[theTable.currentMove.type] > 0) drawGroups[`${theTable.currentMove.type === constants.items.SALT ? "salt " : ""}interfere`].draw();
 
 	// Items
-	if (gameState === TABLE_DAY) {
+	if (gameState === constants.states.DAY) {
 		drawGroups["items"].enable();
 	} else {
 		drawGroups["items"].show();
 	}
-	buttons[PASS].disable();
+	buttons[constants.moves.PASS].disable();
 	drawText("Tools", 0.08, 0.23, 15);
 	var panelH = 0.6;
 	drawRect("#333333", 0.02, 0.25, 0.12, panelH);
@@ -708,23 +711,23 @@ function drawTable() {
 
 	if (theTable.settings.turnOrder && theTable.round) labels["round timer title"].enable().draw();
 
-	if (theTable.currentMove && theTable.currentMove.type === SALT) drawSalt();
+	if (theTable.currentMove && theTable.currentMove.type === constants.items.SALT) drawSalt();
 
 	// Draw message.
 	var msg = theTable.message;
-	if (gameState === TABLE_LOBBY) {
+	if (gameState === constants.states.LOBBY) {
 		if (theTable.players.length >= theTable.settings.minPlayers) {
 			msg = isTableOwner() ? "Press 'Start Game' to begin" : "Waiting for owner to start game";
 		} else {
 			msg = "Waiting for more players to join...";
 		}
-	} else if (gameState === TABLE_ROD_INTERPRET && thePlayer.name === theTable.currentMove.playerName) {
+	} else if (gameState === constants.states.INTERPRET && thePlayer.name === theTable.currentMove.playerName) {
 		msg = `The divining rod reveals that ${theTable.currentMove.targetName} ${rodResult ? "IS" : "IS NOT"} possessed.`;
 	}
 	drawText(msg, 0.3, 0.5, 20, "center", false, labels["table_img"].dims().width * 0.9);
 
 	// Draw buttons
-	if (gameState === TABLE_DAY) {
+	if (gameState === constants.states.DAY) {
 		if (thePlayer.move) drawGroups["items"].disable().show();
 		drawGroups["items"].draw();
 		drawTableItems();
@@ -769,10 +772,10 @@ function drawPlayers() {
 	var tableX = labels["table_img"].x() + tableRad;
 	var tableY = labels["table_img"].y() + tableRad;
 	var angle = 180; 
-	var delta = 360 / (theTable.players.length - ([TABLE_LOBBY, TABLE_END, DEMON_SELECTION].includes(gameState) ? 0 : 1));
+	var delta = 360 / (theTable.players.length - ([constants.states.LOBBY, constants.states.END, constants.states.DEMON_SELECTION].includes(gameState) ? 0 : 1));
 
 	for (var player of theTable.players) {
-		if (player.isDemon) continue;
+		if (player.isDemon && gameState !== constants.states.END) continue;
 		var rad = Math.PI * angle / 180;
 		var x = tableX - Math.sin(rad) * playerRad;
 		var y = tableY + Math.cos(rad) * playerRad;
@@ -846,7 +849,7 @@ function drawSaltLine(tempEnd) {
 	ctx.lineTo(tableX - Math.sin(Math.PI * endAngle / 180) * tableRad, tableY + Math.cos(Math.PI * endAngle / 180) * tableRad);
 	ctx.stroke();
 
-	if (gameState === TABLE_DISPLAY) {
+	if (gameState === constants.states.DISPLAY) {
 		ctx.fillStyle = theTable.saltLine.result[0] ? BUTTON_BACKGROUND : BUTTON_TEXT;
 		var centerAngle = (startAngle + endAngle) / 2 + (startAngle > endAngle ? 180 : 0);
 		ctx.beginPath();
@@ -893,6 +896,7 @@ function drawPlayerPad(player, x, y, rad) {
 	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
 		pent = IMAGES[PENTAGRAM];
 	}
+	if (player.isDemon) pent = IMAGES[PENTAGRAM_RED];
 	drawImage(pent, x, y, rad * 2 / cvW, false, true, true);
 	drawCircle(player.color, x, y, rad * 0.78);
 
@@ -901,15 +905,15 @@ function drawPlayerPad(player, x, y, rad) {
 	buttons[player.name].width = rad * 1.5 / cvW;
 	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
-	buttons[player.name].enabled = (thePlayer.isDemon && !(possessedPlayers.includes(player.name) || player.name === smudgedPlayer || player.isPurified || player.wasPurified)) || (gameState === TABLE_SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
+	buttons[player.name].enabled = (thePlayer.isDemon && !(possessedPlayers.includes(player.name) || player.name === smudgedPlayer || player.isPurified || player.wasPurified)) || (gameState === constants.states.SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
 	buttons[player.name].visible = true;
 	buttons[player.name].draw();
 	
-	if (player.isExorcised) drawImage(IMAGES[EXORCISM], x - rad * 0.25, y - rad * 0.2, false, rad * 0.8 / cvH, true, true);
+	if (player.isExorcised) drawImage(IMAGES[constants.items.EXORCISM], x - rad * 0.25, y - rad * 0.2, false, rad * 0.8 / cvH, true, true);
 	if (player.isSmudged) drawImage(IMAGES[BURNING_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
-	if (player.wasSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
+	if (player.wasSmudged && !player.isSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
 	if (thePlayer.isDemon && player.isSmudged && player.name !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
-	if (player.isPurified || player.wasPurified) drawImage(IMAGES[WATER], x + rad * 0.1, y + rad * 0.15, false, rad * 0.5 / cvH, true, true);
+	if (player.isPurified || player.wasPurified) drawImage(IMAGES[constants.items.WATER], x + rad * 0.1, y + rad * 0.15, false, rad * 0.5 / cvH, true, true);
 
 	// Draw name
 	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.6, rad * 1.6 / cvW, false, true, true);
