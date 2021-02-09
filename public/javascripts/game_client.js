@@ -1,6 +1,3 @@
-// This file manages the games client's logic. It's here that Socket.io connections are handled
-// and functions from canvas.js are used to manage the game's visual appearance.
-
 // Config settings received from server.
 var newTableSettings = {
 	// Table settings
@@ -137,7 +134,6 @@ var ts = timesync.create({
 	interval: 10000
 });
 
-// Main update function, table contains most of the important information.
 socket.on("player id", function(id) {
 	playerId = id;
 });
@@ -146,7 +142,6 @@ socket.on("update table", function(table) {
 	updateTable(table);
 });
 
-// Emit an error to the player from the server.
 socket.on("server error", function(msg) {
 	raiseError(msg);
 });
@@ -223,7 +218,6 @@ socket.on("update interfere", function(uses) {
 	}
 });
 
-// Server calls on connection to provide settings from server.
 socket.on("init settings", function(settings) {
 	labels["version"].text = settings.code_version ? `v${settings.code_version}` : "local";
 	DEBUG = settings.DEBUG;
@@ -438,47 +432,24 @@ function initLabels() {
 		buttons["submit salt"],
 		buttons["clear salt"],
 	]);
-
-	// Sounds
-	// sounds["count"] = new sound("/sounds/racestart.wav");
 }
 
-function toggleSetting(setting, enable) {
-	switch(setting) {
-		case "order":
-			theTable.settings.turnOrder = enable;
-			break;
-		case "purify":
-			theTable.settings.waterPurify = enable;
-			break;
-		default:
-			theTable.settings.items[setting] = enable;
-			break;
-	}
-	buttons[`${enable ? "disable" : "enable"} ${setting}`].clicked = false;
-}
+////////// Input elements \\\\\\\\\\
 
-function incSetting(setting, increase) {
-	var min = INC_SETTINGS[setting].min;
-	var max = INC_SETTINGS[setting].max;
-	var inc = INC_SETTINGS[setting].inc;
-	switch(setting) {
-		case "MIN_PLAYERS":
-			theTable.settings.minPlayers = Math.min(max, Math.max(min, theTable.settings.minPlayers + inc * (increase ? 1 : -1)));
-			break;
-		case "MAX_PLAYERS":
-			theTable.settings.maxPlayers = Math.min(max, Math.max(min, theTable.settings.maxPlayers + inc * (increase ? 1 : -1)));
-			break;
-		default:
-			theTable.settings.times[setting] = Math.min(max, Math.max(min, theTable.settings.times[setting] + inc * (increase ? 1 : -1)));
-			break;
-	}
+function displayElem(elem, doDisplay) {
+	elem.style.display = doDisplay ? "block" : "none";
 }
 
 function disableInputs() {
 	setElemDisplay();
 	for (var c of demonChats) {
 		displayElem(c, false);
+	}
+}
+
+function setElemDisplay(inputs = []) {
+	for (var name in ELEM_CONFIGS) {
+		displayElem(document.getElementById(name), inputs.includes(name));
 	}
 }
 
@@ -503,16 +474,6 @@ function enableInputs() {
 			}
 			break;
 	}
-}
-
-function setElemDisplay(inputs = []) {
-	for (var name in ELEM_CONFIGS) {
-		displayElem(document.getElementById(name), inputs.includes(name));
-	}
-}
-
-function displayElem(elem, doDisplay) {
-	elem.style.display = doDisplay ? "block" : "none";
 }
 
 function setChatHeight() {
@@ -622,18 +583,10 @@ function setChatHeight() {
 	resizeElems();
 }
 
-function toggleSound(enable) {
-	if (!enable) {
-		for (var sound of sounds) {
-			sound.stop();
-		}
-	}
-	soundEnabled = enable;
-}
+////////// Chat logic \\\\\\\\\\\\
 
 var lastPlayer = undefined;
 var chatBgnd = false;
-
 function addMessage(chat, msg, player) {
 	// Handle simple text messages;
 	var item = document.createElement("li");
@@ -715,13 +668,7 @@ function removeDemonChats() {
 	demonChats = [];
 }
 
-function formatSec(sec) {
-	var min = Math.floor(sec / 60);
-	var sec = sec % 60;
-	return (min ? `${min}m` : "") + ((sec || !min) ? `${sec.toString().padStart(2, "0")}s` : "");
-}
-
-///// Game logic \\\\\
+/////////// Game logic \\\\\\\\\\\\
 
 function changeState(state) {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
@@ -802,8 +749,38 @@ function changeState(state) {
 	enableInputs();
 }
 
-function isTableOwner() {
-	return theTable && theTable.players.length > 0 && theTable.players[0].sessionId === playerId;
+/////////// Buttons \\\\\\\\\\\\\\\
+
+function toggleSetting(setting, enable) {
+	switch(setting) {
+		case "order":
+			theTable.settings.turnOrder = enable;
+			break;
+		case "purify":
+			theTable.settings.waterPurify = enable;
+			break;
+		default:
+			theTable.settings.items[setting] = enable;
+			break;
+	}
+	buttons[`${enable ? "disable" : "enable"} ${setting}`].clicked = false;
+}
+
+function incSetting(setting, increase) {
+	var min = INC_SETTINGS[setting].min;
+	var max = INC_SETTINGS[setting].max;
+	var inc = INC_SETTINGS[setting].inc;
+	switch(setting) {
+		case "MIN_PLAYERS":
+			theTable.settings.minPlayers = Math.min(max, Math.max(min, theTable.settings.minPlayers + inc * (increase ? 1 : -1)));
+			break;
+		case "MAX_PLAYERS":
+			theTable.settings.maxPlayers = Math.min(max, Math.max(min, theTable.settings.maxPlayers + inc * (increase ? 1 : -1)));
+			break;
+		default:
+			theTable.settings.times[setting] = Math.min(max, Math.max(min, theTable.settings.times[setting] + inc * (increase ? 1 : -1)));
+			break;
+	}
 }
 
 function doMove(move) {
@@ -891,10 +868,6 @@ function selectPlayer(name) {
 	}
 }
 
-Number.prototype.mod = function(n) {
-	return ((this % n) + n) % n;
-}
-
 function cycleActivePlayer(forward) {
 	if (thePlayer.isDemon) {
 		var index = possessedPlayers.indexOf(selectedPlayer);
@@ -902,30 +875,6 @@ function cycleActivePlayer(forward) {
 		selectedPlayer = possessedPlayers[index];
 	}
 }
-
-function getSelectedPlayer() {
-	if (selectedPlayer) {
-		for (var player of theTable.players) {
-			if (player.name === selectedPlayer) {
-				return player;
-			}
-		}
-	}
-}
-
-function getPlayerByName(name) {
-	for (var player of theTable.players) {
-		if (player.name === name) return player;
-	}
-	return false;
-}
-
-function getCurrentPlayer() {
-	if (!theTable || !theTable.settings.turnOrder) return false;
-	return theTable.players[theTable.currentPlayer]
-}
-
-///// Client-server functions \\\\\
 
 function updateSettings() {
 	socket.emit("update settings", theTable.settings);
@@ -1046,7 +995,7 @@ function handleServerDisconnect() {
 	changeState(constants.states.INIT);
 }
 
-///// Utilities \\\\\\\
+/////////// Utilities \\\\\\\\\
 
 function enableOverlay(theOverlay) {
 	overlay = theOverlay;
@@ -1134,4 +1083,8 @@ function fadeLabel(label, start) {
 		console.log(`\tTHAT's ALL FOLKS!`);
 		labels[label].visible = false;
 	}
+}
+
+Number.prototype.mod = function(n) {
+	return ((this % n) + n) % n;
 }
