@@ -8,16 +8,11 @@ var cookie = require("cookie");
 var constants = require("../public/shared/constants");
 const e = require("express");
 
-var players = {};
-var socketMap = {};
+const gameStore = new (require("./game_store.js"))(DEBUG);
 
-var tables = {};
-var chatLogs = {};
-const GENERAL = "general";
-var games = {};
+const GENERAL = "GENERAL";
 
 // Delete tables with all inactive players after 1 hour
-const INACTIVE_TABLE_DELETION_SEC = DEBUG ? 1 : 1 * 60 * 60;
 const FAILED_SECOND_DISPLAY_SEC = 3;
 const FAILED_VOTE_DISPLAY_SEC = 5;
 const ROUND_OVER_DISPLAY_SEC = 3;
@@ -93,8 +88,8 @@ module.exports.listen = function(app) {
 		});
 
 		socket.on("update settings", function(settings) {
-			var table = getTableBySocketId(socket.id);
-			if (isTableOwner(socketMap[socket.id], table)) {
+			const table = gameStore.getSocketTable(socket.id);
+			if (isTableOwner(gameStore.getPlayerId(socket.id), table)) {
 				updateSettings(table, settings);
 			} else {
 				socket.emit("server error", "Only owner can modify table settings!");
@@ -121,10 +116,8 @@ module.exports.listen = function(app) {
 ///// Lobby \\\\\
 
 function createTable(settings) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var table = {
+	let table = gameStore.createTable({
 		// Session
-		code: createTableCode(),
 		players: [],
 		// Game
 		state: constants.states.LOBBY,
@@ -134,38 +127,16 @@ function createTable(settings) {
 		timers: [],
 		demonId: undefined,
 		currentMove: undefined,
-	};
+	});
 	updateSettings(table, settings);
-	chatLogs[table.code] = [];
-	chatLogs[table.code][GENERAL] = [];
-	tables[table.code] = table;
 	return table.code;
 }
 
-function makeTableCode() {
-	const charset = DEBUG ? String.fromCharCode('A'.charCodeAt() + Object.keys(tables).length) : "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
-	const codeLen = 4;
-	let code = "";
-	for (var i = 0; i < codeLen; i++) {
-		code += charset.charAt(Math.floor(Math.random() * charset.length));
-	}
-	return code;
-}
-
-function createTableCode() {
-	do {
-		code = makeTableCode();
-	} while (code in tables);
-	return code;
-}
-
 function joinTable(socket, code, name, avatarId, color) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-
-	var player = getPlayerBySocketId(socket.id);
+	var player = gameStore.getSocketPlayer(socket.id);
 	if (!player) return false;
 
-	var table = getTableByCode(code);
+	var table = gameStore.getTable(code);
 	if (!table) {
 		player.socket.emit("server error", "Table " + code + " not found!");
 		return false;
@@ -201,16 +172,16 @@ function joinTable(socket, code, name, avatarId, color) {
 	});
 	// Update player on the current state of the world.
 	updateTable(table);
-	chatLogs[table.code][GENERAL].map(l => socket.emit("chat msg", l.msg, l.sender));
+	gameStore.getChatLogs(code, GENERAL).map(l => socket.emit("chat msg", l.msg, l.sender));
 }
 
 function leaveTable(socket) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 
-	const player = getPlayerBySocketId(socket.id);
+	const player = gameStore.getSocketPlayer(socket.id);
 	if (!player) return;
 
-	const table = getTableByCode(player.tableCode);
+	const table = gameStore.getTable(player.tableCode);
 	if (!table) return;
 
 	if (table.state !== constants.states.LOBBY) {
@@ -222,7 +193,7 @@ function leaveTable(socket) {
 	removeByValue(table.players, table.players.find(p => p.sessionId === player.sessionId));
 
 	if (table.players.length === 0) {
-		deleteTable(table);
+		gameStore.deleteTable(table);
 	} else {
 		updateTable(table);
 	}
@@ -231,7 +202,7 @@ function leaveTable(socket) {
 
 function updateSettings(table, settings) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (!table) { return false; }
+	if (!table) return false;
 	table.settings = settings;
 	table.itemsInUse = [];
 	for (var item in table.settings.items) {
@@ -242,21 +213,17 @@ function updateSettings(table, settings) {
 
 function updateAvatar(socket, avatarId) {
 	if (avatarId < 0 || avatarId >= constants.AVATAR_COUNT) return;
-	var player = getPlayerBySocketId(socket.id);
-	if (!player) return;
-	var table = getTableByCode(player.tableCode);
-	if (!table) return;
-	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+	const { tablePlayer } = gameStore.getContext(socket);
+	if (!tablePlayer) return; 
 	tablePlayer.avatarId = avatarId;
 	updateTable(table);
 }
 
 function updateColor(socket, color) {
 	if (!constants.PLAYER_COLORS.includes(color)) return;
-	var table = getTableBySocketId(socket.id);
+	const { table, tablePlayer } = gameStore.getContext(socket);
+	if (!table || !tablePlayer) return;
 	if (table.players.find(p => p.color === color)) return;
-	var player = getPlayerBySocketId(socket.id);
-	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
 	tablePlayer.color = color;
 	updateTable(table);
 }
@@ -266,17 +233,15 @@ function updateColor(socket, color) {
 function updateTable(table) {
 	for (var tablePlayer of table.players) {
 		if (!tablePlayer.active) continue;
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
+		var player = gameStore.getPlayer(tablePlayer.sessionId);
 		if (player) player.socket.emit("update table", table);
 	}
 }
 
 function sendMessage(socket, msg, targetName) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var player = getPlayerBySocketId(socket.id);
-	if (!player) { return; }
-	var table = getTableBySocketId(socket.id);
-	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+	const { table, tablePlayer } = gameStore.getContext(socket);
+	if (!table || !tablePlayer) return;
 
 	if (tablePlayer.isDemon) {
 		if (!targetName) return;
@@ -288,24 +253,24 @@ function sendMessage(socket, msg, targetName) {
 
 function broadcastMessage(table, msg, sender) {
 	for (var tablePlayer of table.players) {
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
+		var player = gameStore.getPlayer(tablePlayer.sessionId);
 		if (player) player.socket.emit("chat msg", msg, sender);
 	}
-	chatLogs[table.code][GENERAL].push({msg: msg, sender: sender})
+	gameStore.addChatMsg(table.code, GENERAL, {msg: msg, sender: sender});
 }
 
 function sendDemonMessage(table, msg, targetName) {
 	var targetTablePlayer = getTablePlayerByName(targetName, table);
-	var targetPlayer = getPlayerBySessionId(targetTablePlayer.sessionId);
+	var targetPlayer = gameStore.getPlayer(targetTablePlayer.sessionId);
 	targetPlayer.socket.emit("demon msg", msg);
-	var demonPlayer = getPlayerBySessionId(table.demonId);
+	var demonPlayer = gameStore.getPlayer(table.demonId);
 	demonPlayer.socket.emit("demon msg", msg, targetName);
-	chatLogs[table.code][targetName].push({msg: msg});
+	gameStore.addChatMsg(table.code, targetName, {msg: msg});
 }
 
 function clearChats(table) {
 	for (var tablePlayer of table.players) {
-		var player = getPlayerBySessionId(tablePlayer.sessionId);
+		var player = gameStore.getPlayer(tablePlayer.sessionId);
 		if (player) {
 			player.socket.emit("clear chat", "player-chat");
 			player.socket.emit("clear chat", "game-log");
@@ -315,8 +280,8 @@ function clearChats(table) {
 }
 
 function clearTimer(table, timer) {
-	const game = getGameByCode(table.code);
-	if (!game) return;
+	const game = gameStore.getGame(table.code);
+	if (!game || !game.timers) return;
 	if (game.timers[timer]) clearTimeout(game.timers[timer]);
 	game.timers[timer] = undefined;
 	table.timers[timer] = false;
@@ -326,11 +291,8 @@ function clearTimer(table, timer) {
 
 function handleMove(socket, move) {
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var player = getPlayerBySocketId(socket.id);
-	if (!player) return;
-	var table = getTableByCode(player.tableCode);
-	if (!table) return;
-	var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+	const { player, table, tablePlayer } = gameStore.getContext(socket);
+	if (!(player && table && tablePlayer)) return;
 
 	var result = tablePlayer.isDemon ? handleDemonMove(table, player, move) : handlePlayerMove(table, player, tablePlayer, move);
 	if (result.advance) {
@@ -354,7 +316,7 @@ function handleDemonMove(table, player, move) {
 			break;
 		case constants.states.NIGHT:
 			if (move.type !== constants.moves.SELECT) return result;
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			if (game.smudgedPlayer === move.targetName) return result;
 			var targetTablePlayer = getTablePlayerByName(move.targetName, table);
 			if (targetTablePlayer.isPurified) return result;
@@ -374,7 +336,7 @@ function handleDemonMove(table, player, move) {
 			break;
 		case constants.states.INTERFERE:
 			if (move.type !== constants.moves.INTERFERE) return result;
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			if (!game.interfereUses[table.currentMove.type]) return;
 			game.doInterfere = move.saltFlip ? (move.saltFlip[0] || move.saltFlip[1]) : move.vote;
 			game.saltFlip = move.saltFlip;
@@ -411,7 +373,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			break;
 		case constants.states.DEMON_SELECTION:
 			if (move.type !== constants.moves.ACCEPT_DEMON) return result;
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			if (!game) return result;
 			if (tablePlayer.name !== game.demonCandidate) return result;
 			result.handled = true;
@@ -434,7 +396,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 		case constants.states.DISCUSS:
 			if (move.type != constants.moves.READY) return result;
 
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			game.votes[tablePlayer.name] = true;
 
 			result.handled = true;
@@ -477,7 +439,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			if (tablePlayer.isExorcised) return result;
 
 			tablePlayer.voted = true;
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			game.votes[tablePlayer.name] = move.vote;
 						
 			// Advance if any player voted yes, or if all player have voted.
@@ -495,7 +457,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 			if (tablePlayer.isExorcised) return result;
 
 			tablePlayer.voted = true;
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			game.votes[tablePlayer.name] = move.vote;
 			
 			// If all non-demon players have voted, advance round.
@@ -538,7 +500,7 @@ function handlePlayerMove(table, player, tablePlayer, move) {
 		case constants.states.INTERPRET:
 			if (move.type !== constants.moves.INTERPRET) return result;
 			if (tablePlayer.name !== table.currentMove.playerName) return result;
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			game.rodDisplay = move.choice;
 			result.handled = true;
 			// We do not advance round, this is handled by timer
@@ -577,9 +539,9 @@ function advanceState(table) {
 			table.demonMessage = DISCUSS_DEMON_MSG;
 
 			// Clear over-night protection.
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			game.smudgedPlayer = undefined;
-			var demonPlayer = getPlayerBySessionId(table.demonId);
+			var demonPlayer = gameStore.getPlayer(table.demonId);
 			demonPlayer.socket.emit("smudged player");
 
 			table.players.forEach(function (player) {
@@ -639,7 +601,7 @@ function advanceState(table) {
 				table.state = constants.states.VOTING;
 				autoAdvanceState(table, table.settings.times[constants.times.VOTE], true);
 			} else {
-				var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
+				var tablePlayer = getTablePlayerById(table.currentMove.playerId, table);
 				tablePlayer.move.success = false;
 				table.message = `No player seconds ${table.currentMove.playerName}'s proposal`
 				broadcastMessage(table, `No player seconds <c>${table.currentMove.playerName}</c>'s proposal`);
@@ -651,7 +613,7 @@ function advanceState(table) {
 		// Move to player select or back to day
 		case constants.states.VOTING:
 			var tally = tallyVotes(table, true);
-			var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
+			var tablePlayer = getTablePlayerById(table.currentMove.playerId, table);
 			if (tally.yes.length >= tally.no.length) {
 				tablePlayer.move.success = true;
 				var action = table.currentMove.type === constants.items.SALT ? "draw a line" : "select a target";
@@ -695,7 +657,7 @@ function advanceState(table) {
 						break;
 				}
 			} else {
-				var tablePlayer = getTablePlayerBySessionId(table.currentMove.playerId, table);
+				var tablePlayer = getTablePlayerById(table.currentMove.playerId, table);
 				var action = table.currentMove.type === constants.items.SALT ? "complete a line" : "select a target";
 				table.message = `${table.currentMove.playerName} failed to ${action} and forfeits their move.`;
 				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> failed to ${action} and forfeits their move.`);
@@ -708,7 +670,7 @@ function advanceState(table) {
 			}
 			break;
 		case constants.states.INTERFERE:
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			var targetTablePlayer = getTablePlayerByName(table.currentMove.targetName, table);
 			table.state = constants.states.DISPLAY;
 
@@ -716,7 +678,7 @@ function advanceState(table) {
 				game.anyInterfere = true;
 				game.interfereUses[table.currentMove.type] -= 1;
 			}
-			var demonPlayer = getPlayerBySessionId(table.demonId);
+			var demonPlayer = gameStore.getPlayer(table.demonId);
 			demonPlayer.socket.emit("update interfere", game.interfereUses);
 
 			switch (table.currentMove.type) {
@@ -733,7 +695,7 @@ function advanceState(table) {
 					game.rodDisplay = undefined;
 					table.message = `${table.currentMove.playerName} is interpreting the results of the divining rod`;
 					var tablePlayer = getTablePlayerByName(table.currentMove.playerName, table);
-					var player = getPlayerBySessionId(tablePlayer.sessionId);
+					var player = gameStore.getPlayer(tablePlayer.sessionId);
 					player.socket.emit("rod", is);
 					table.state = constants.states.INTERPRET;
 					table.timers[constants.timers.MOVE] = getTimerValue(table.settings.times[constants.times.INTERPRET]);
@@ -747,7 +709,7 @@ function advanceState(table) {
 
 					targetTablePlayer.isExorcised = true;
 					if (!targetTablePlayer.move) targetTablePlayer.move = {type: constants.moves.PASS};
-					var targetPlayer = getPlayerBySessionId(targetTablePlayer.sessionId);
+					var targetPlayer = gameStore.getPlayer(targetTablePlayer.sessionId);
 					targetPlayer.socket.emit("pop up", "You are unconscious until tomorrow, do not speak!");
 					break;
 				case constants.items.SALT:
@@ -791,7 +753,7 @@ function advanceState(table) {
 			autoAdvanceState(table, wait);
 			break;
 		case constants.states.INTERPRET:
-			var game = getGameByCode(table.code);
+			var game = gameStore.getGame(table.code);
 			if (game.rodDisplay === undefined) {
 				table.message = `${table.currentMove.playerName} chooses not to share if ${table.currentMove.targetName} is possessed`;
 				broadcastMessage(table, `<c>${table.currentMove.playerName}</c> chooses not to share if <c>${table.currentMove.targetName}</c> is possessed`);
@@ -827,21 +789,21 @@ function advanceState(table) {
 }
 
 function autoAdvanceState(table, delay, display=false) {
-	const game = getGameByCode(table.code);
+	const game = gameStore.getGame(table.code);
 	if (!game) return;
 	game.timers[constants.timers.MOVE] = Number(setTimeout(advanceState.bind(null, table), 1000 * delay))
 	if (display) table.timers[constants.timers.MOVE] = getTimerValue(delay);
 }
 
 function autoAdvanceRound(table) {
-	const game = getGameByCode(table.code);
+	const game = gameStore.getGame(table.code);
 	if (!game) return;
 	game.timers[constants.timers.ROUND] = Number(setTimeout(timeoutRound.bind(null, table), 1000 * table.settings.times[constants.times.ROUND]));
 	table.timers[constants.timers.ROUND] = getTimerValue(table.settings.times[constants.times.ROUND]);
 }
 
 function timeoutRound(table) {
-	const game = getGameByCode(table.code);
+	const game = gameStore.getGame(table.code);
 	if (!game) return;
 	game.timeout = true;
 	if (table.state === constants.states.DAY) {
@@ -853,7 +815,7 @@ function timeoutRound(table) {
 }
 
 function handleTurnEnd(table) {
-	var game = getGameByCode(table.code);
+	var game = gameStore.getGame(table.code);
 	game.doInterfere = false;
 	game.saltFlip = [false, false];
 	
@@ -906,7 +868,7 @@ function isStillDay(table) {
 	if (table.settings.turnOrder) {
 		if (table.currentPlayer === table.startPlayer) return false;
 	} else {
-		var game = getGameByCode(table.code);
+		var game = gameStore.getGame(table.code);
 		if (!game || game.timeout) return false;
 	}
 
@@ -938,7 +900,7 @@ function handleNewGame(table) {
 	clearVotes(table);
 
 	// Game holds secret information.
-	games[table.code] = {
+	gameStore.setGame(table.code, {
 		interfereUses: {
 			[constants.items.WATER]: 0,
 			[constants.items.BOARD]: 1,
@@ -950,11 +912,10 @@ function handleNewGame(table) {
 		possessedPlayers: [],
 		timers: {},
 		votes: {},
-	}
+	});
 
 	// Clear chat logs
-	chatLogs[table.code] = [];
-	chatLogs[table.code][GENERAL] = [];
+	gameStore.clearChat(table.code);
 	clearChats(table);
 
 	// Select demon candidate
@@ -978,7 +939,7 @@ function handleNewGame(table) {
 }
 
 function selectDemonCandidate(table, start=false) {
-	var game = getGameByCode(table.code);
+	var game = gameStore.getGame(table.code);
 	if (start) {
 		game.demonCandidates = [];
 		game.demonCandidate = undefined;
@@ -988,7 +949,7 @@ function selectDemonCandidate(table, start=false) {
 	var index = Math.floor(Math.random() * game.demonCandidates.length);
 	game.demonCandidate = game.demonCandidates[index];
 	var tablePlayer = getTablePlayerByName(game.demonCandidate, table);
-	var player = getPlayerBySessionId(tablePlayer.sessionId);
+	var player = gameStore.getPlayer(tablePlayer.sessionId);
 	player.socket.emit("accept demon");
 }
 
@@ -1016,7 +977,7 @@ function nextPlayer(table, index) {
 }
 
 function handleNewRound(table) {
-	var game = getGameByCode(table.code);
+	var game = gameStore.getGame(table.code);
 
 	table.round += 1;
 	table.state = constants.states.NIGHT;
@@ -1060,14 +1021,14 @@ function handleNewRound(table) {
 }
 
 function possessPlayer(table, targetName, doPossess) {
-	var game = getGameByCode(table.code);
-	var demonPlayer = getPlayerBySessionId(table.demonId);
+	var game = gameStore.getGame(table.code);
+	var demonPlayer = gameStore.getPlayer(table.demonId);
 	var tablePlayer = getTablePlayerByName(targetName, table);
-	var targetPlayer = getPlayerBySessionId(tablePlayer.sessionId);
+	var targetPlayer = gameStore.getPlayer(tablePlayer.sessionId);
 	if (doPossess) {
 		if (game.possessedPlayers.includes(tablePlayer.name)) return false;
 		game.possessedPlayers.push(tablePlayer.name);
-		chatLogs[table.code][tablePlayer.name] = [];
+		gameStore.clearChat(table.code, tablePlayer.name);
 		sendDemonMessage(table, "You have been possessed!", tablePlayer.name);
 	} else {
 		if (!game.possessedPlayers.includes(tablePlayer.name)) return false;
@@ -1090,7 +1051,7 @@ function clearVotes(table) {
 		player.voted = false;
 		player.vote = undefined;
 	});
-	var game = getGameByCode(table.code);
+	var game = gameStore.getGame(table.code);
 	if (game) game.votes = {};
 }
 
@@ -1100,7 +1061,7 @@ function tallyVotes(table, makePublic) {
 		no: [],
 		abstain: [],
 	};
-	const game = getGameByCode(table.code);
+	const game = gameStore.getGame(table.code);
 	for (var tablePlayer of table.players) {
 		if (tablePlayer.isDemon) continue;
 		if (tablePlayer.isExorcised) continue;
@@ -1165,14 +1126,9 @@ function handleNewConnection(socket) {
 	let sessionId = DEBUG ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
 	socket.emit("player id", sessionId);
 
-	let player = getPlayerBySessionId(sessionId);
+	let player = gameStore.getPlayer(sessionId);
 	if (!player) {
-		players[sessionId] = {
-			socket: socket,
-			sessionId: sessionId,
-			tableCode: undefined,
-		};
-		socketMap[socket.id] = sessionId;
+		gameStore.createPlayer(socket, sessionId);
 		clearTable(socket);
 		return
 	}
@@ -1182,11 +1138,9 @@ function handleNewConnection(socket) {
 		return;
 	}
 
-	socketMap[socket.id] = sessionId;
-	player.socket = socket;
-	player.active = true;
+	gameStore.markPlayerActive(socket, sessionId);
 
-	let table = getTableByCode(player.tableCode);
+	let table = gameStore.getTable(player.tableCode);
 	if (!table) {
 		player.tableCode = undefined;
 		clearTable(socket);
@@ -1195,11 +1149,11 @@ function handleNewConnection(socket) {
 	// console.log("PLAYER HAS A TABLE CODE! " + sessionId);
 	// console.log("PLAYER'S TABLE (" + player.tableCode + ") EXISTS! " + sessionId);
 
-	var tablePlayer = getTablePlayerBySessionId(sessionId, table);
+	var tablePlayer = getTablePlayerById(sessionId, table);
 	tablePlayer.active = true;
 	updateTable(table);
 
-	var game = getGameByCode(table.code);
+	var game = gameStore.getGame(table.code);
 	if (game) {
 		// Update demon on state of the world.
 		if (tablePlayer.isDemon) {
@@ -1210,13 +1164,13 @@ function handleNewConnection(socket) {
 		if (game.possessedPlayers.includes(tablePlayer.name)) player.socket.emit("possession", true);
 	}
 
-	for (var chat in chatLogs[table.code]) {
+	for (const [chat, log] in gameStore.getChatLogs(table.code)) {
 		if (chat === GENERAL) {
-			for (var l of chatLogs[table.code][chat]) {
+			for (var l of log) {
 				socket.emit("chat msg", l.msg, l.player);
 			}
 		} else if (tablePlayer.isDemon || chat === tablePlayer.name) {
-			for (var l of chatLogs[table.code][chat]) {
+			for (var l of log) {
 				socket.emit("demon msg", l.msg, l.player);
 			}
 		}
@@ -1228,89 +1182,26 @@ function clearTable(socket) {
 }
 
 function playerDisconnected(socket) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
+	const player = gameStore.markPlayerInactive(socket);
+	if (!player) return;
 
-	if (!(socket.id in socketMap)) return;
-	const sessionId = socketMap[socket.id]
-	delete socketMap[socket.id];
-
-	if (!(sessionId in players)) return;
-	const player = players[sessionId];
-
-	player.socket = undefined;
-	player.active = false;
-	
-	// TODO: db interaction
-	// TODO: set timer to delete inactive playre
-
-	var table = getTableByCode(player.tableCode);
+	var table = gameStore.getTable(player.tableCode);
 	if (table) { 
-		var tablePlayer = getTablePlayerBySessionId(player.sessionId, table);
+		var tablePlayer = getTablePlayerById(player.sessionId, table);
 		tablePlayer.active = false;
 
 		if (table.players.reduce((acc, p) => acc || p.active, false)) {
 			updateTable(table);
 		} else {
-			setTimeout(deleteTable.bind(null, table), INACTIVE_TABLE_DELETION_SEC * 1000);
+			gameStore.scheduleTableDeletion(table.code);
 		}
 	}
 }
 
-// Getters / setters / deleters -- handles in mem and database interactions
-
-function deleteGame(code) {
-	delete games[code];
-}
-
-function deleteChat(code) {
-	delete chatLogs[code];
-}
-
-function deleteTable(table) {
-	// Delete game and table.
-	deleteGame(table.code);
-	deleteChat(table.code);
-	delete tables[code];
-}
-
-// Simple getters TODO: refactor this?
-
-function getTablePlayerBySessionId(sessionId, table) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (table && table.players) {
-		for (var player of table.players) {
-			if (player.sessionId === sessionId) {
-				return player
-			}
-		}
-	}
-	return false;
+function getTablePlayerById(id, table) {
+	return (id && table) ? table.players.find(p => p.sessionId === id) : undefined;
 }
 
 function getTablePlayerByName(name, table) {
-	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (!table) return undefined;
-	return table.players.find(p => p.name === name);
-}
-
-function getPlayerBySocketId(socketId) {
-	return getPlayerBySessionId(socketMap[socketId]);
-}
-
-function getPlayerBySessionId(sessionId) {
-	return players[sessionId];
-}
-
-function getTableByCode(code) {
-	if (!code) return undefined;
-	return tables[code.toUpperCase()];
-}
-
-function getTableBySocketId(socketId) {
-	var player = getPlayerBySocketId(socketId);
-	return player ? getTableByCode(player.tableCode) : undefined;
-}
-
-function getGameByCode(code) {
-	return games[code.toUpperCase()];
+	return (name && table) ? table.players.find(p => p.name === name) : undefined;
 }

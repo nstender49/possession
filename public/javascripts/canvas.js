@@ -486,7 +486,7 @@ function drawSettings() {
 
 	// Items
 	drawRect("#666666", 0.03, 0.25, 0.46, 0.6);
-	const ITEMS = Object.values(items);
+	const ITEMS = Object.values(constants.items);
 	var half = Math.ceil(Object.keys(constants.items).length / 2);
 	var itemHeight = (0.6 * 0.8) / half;
 	var margin = (0.6 - itemHeight * half) / (half + 1);

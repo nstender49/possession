@@ -18,7 +18,7 @@ var newTableSettings = {
 	},
 	// Time limits
 	times: {
-		[constants.times.ROUND]: 30,
+		[constants.times.ROUND]: 300,
 		[constants.times.DISCUSS]: 60,
 		[constants.times.TURN]: 60,
 		[constants.times.SECOND]: 10,
