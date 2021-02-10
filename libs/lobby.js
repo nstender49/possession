@@ -1,5 +1,6 @@
 var cookie = require("cookie");
-const e = require("express");
+const e = require("express");  // TODO: needed?
+const { v4 } = require("uuid");
 
 const Room = require("./room");
 
@@ -9,6 +10,7 @@ class Lobby {
         this.rooms = {};
         this.players = {};
         this.socketToId = {};
+        this.sessionToId = {};
 
         this.debug = debug;
         this.INACTIVE_TABLE_DELETION_SEC = this.debug ? 1 : 1 * 60 * 60;
@@ -41,29 +43,28 @@ class Lobby {
 
     addPlayer(socket) {
         const sessionId = this.debug ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
-        socket.emit("player id", sessionId);
 
-        const player = this.players[sessionId];
-        this.socketToId[socket.id] = sessionId;
-        if (!player) {
-            this.players[sessionId] = {
-                socket: socket,
-                sessionId: sessionId,
-                roomCode: undefined,
+        let id = this.sessionToId[sessionId] || v4();
+        socket.emit("player id", id);
+        socket.emit("clear state");
+        this.socketToId[socket.id] = id;
+        this.sessionToId[sessionId] = id;
+
+        const player = this.players[id];
+        if (player) {
+            if (player.active) {
+                socket.emit("server error", "Found existing session in another tab");
+            } else {
+                player.active = true;
+                const room = this.rooms[player.roomCode];
+                if (room) room.markPlayerActive(socket, id);
             }
-            return;
+        } else {
+            this.players[id] = {
+                gameCode: undefined,
+                active: true,
+            };
         }
-
-        if (player.active) {
-            socket.emit("server error", "Found existing session in another tab");
-		    return;
-        }
-
-        player.socket = socket;
-        player.active = true;
-
-        const room = this.rooms[player.roomCode];
-        if (room) room.markPlayerActive(socket, sessionId);
     }
 
     updatePlayer(socket, settings) {
@@ -80,12 +81,11 @@ class Lobby {
         const id = this.socketToId[socket.id];
         if (!id) return;
         const room = this.rooms[code];
-        if (!room) {
+        if (room) {
+            if (room.addPlayer(socket, id, settings)) this.players[id].roomCode = code;
+        } else {
             socket.emit("server error", `Table ${code} not found!`);
-            return;
         }
-        let success = room.addPlayer(socket, id, settings);
-        if (success) this.players[id].roomCode = code;
     }
 
     removePlayerFromRoom(socket) {
@@ -101,10 +101,7 @@ class Lobby {
         // TODO: remove from table if in lobby.
         const { id, player, room } = this.getContext(socket);
         delete this.socketToId[socket.id];
-        if (player) {
-            player.socket = undefined;
-            player.active = false;
-        }
+        if (player) player.active = false;
         if (room) {
             room.markPlayerInactive(id);
             if (!room.active()) this.scheduleRoomDeletion(room.code);
@@ -113,8 +110,12 @@ class Lobby {
 
     handleMove(socket, move) {
         const { id, room } = this.getContext(socket);
-        if (!room) return;
-        room.handleMove(id, move);
+        if (room) room.handleMove(id, move);
+    }
+
+    sendMessage(socket, msg, targetName) {
+        const { id, room } = this.getContext(socket);
+        if (room) room.sendMessage(id, msg, targetName);
     }
     
     getContext(socket) {
@@ -130,8 +131,7 @@ class Lobby {
 
     deleteIfInactive(code) {
         const room = this.rooms[code];
-        if (!room) return;
-        if (!room.active()) this.deleteRoom(code);
+        if (room && !room.active()) this.deleteRoom(code);
     }
 
     scheduleRoomDeletion(code) {

@@ -1,5 +1,5 @@
 // Config settings received from server.
-var newTableSettings = {
+const defaultNewTableSettings = {
 	// Table settings
 	minPlayers: 6,
 	maxPlayers: 13, 
@@ -37,6 +37,7 @@ const INC_SETTINGS = {
 	"MIN_PLAYERS": {min: 3, max: 13, inc: 1},
 	"MAX_PLAYERS": {min: 3, max: 13, inc: 1},
 };
+var newTableSettings = Cookies.getJSON("table settings") || defaultNewTableSettings;
 
 ////////// Game states \\\\\\\\\\\\
 
@@ -136,7 +137,6 @@ var ts = timesync.create({
 
 socket.on("player id", function(id) {
 	playerId = id;
-	updateTable();
 });
 
 socket.on("clear state", function() {
@@ -228,6 +228,8 @@ socket.on("init settings", function(settings) {
 	DEBUG = settings.DEBUG;
 	if (DEBUG) {
 		newTableSettings.minPlayers = 3;
+		document.getElementById("player-name").value = "Player" + Math.floor(Math.random() * 100);
+		document.getElementById("game-code").value = "AAAA";
 	}
 	handleResize();
 });
@@ -239,8 +241,6 @@ socket.on("disconnect", function() {
 //////////  Init static GUI elements  \\\\\\\\\\
 
 function initLabels() {
-	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-
 	labels["title"] = new Label("POSSESSION", 80).setPosition(0.5, 0.4);
 	labels["disconnected"] = new Label("Waiting for server connection...", 20).setPosition(0.5, 0.92);
 	labels["error msg"] = new Label("", 20).setPosition(0.5, 0.98);
@@ -257,6 +257,7 @@ function initLabels() {
 	// Table
 	labels["table_img"] = new ImageLabel(IMAGES[TABLE]).setCenter(true).setPosition(0.3, 0.5).setDims(0.4)
 
+	// Table lobby
 	buttons["begin game"] = new Button("Start Game", 15, doMove.bind(null, constants.moves.BEGIN)).setPosition(0.3, 0.3).setDims(0.15, 0.07).setCenter(true);
 	buttons["table settings"] = new Button("Table Settings", 15, enableOverlay.bind(null, OVERLAY_SETTINGS)).setPosition(0.3, 0.4).setDims(0.15, 0.07).setCenter(true);
 	buttons["leave table"] = new Button("Leave Table", 15, leaveTable).setPosition(0.3, 0.6).setDims(0.15, 0.07).setCenter(true);
@@ -375,11 +376,11 @@ function initLabels() {
 	});
 
 	// Game settings (bottom bar)
-	labels["table"] = new Label("Table {}", 15).setPosition(0.01, 0.98).setAlign("left").setData("????");
+	buttons["table code"] = new Button("Table ????", 12, toggleShowTable).setPosition(0.05, 0.97).setDims(0.09, 0.04).setCenter(true);
 	buttons["howto"] = new Button("How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO)).setPosition(0.15, 0.97).setDims(0.09, 0.04).setCenter(true);
 	labels["version"] = new Label("", 15).setPosition(0.99, 0.98).setAlign("right").setFont("monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
-		labels["table"],
+		buttons["table code"],
 		buttons["howto"],
 		labels["error msg"],
 		// buttons["sound"],
@@ -715,7 +716,7 @@ function changeState(state) {
 			if (!thePlayer.isDemon) buttons["ready"].enable();
 			break;
 		case constants.states.DAY:
-			var enabled = !thePlayer.isDemon && (!theTable.settings.turnOrder || thePlayer.sessionId === getCurrentPlayer().sessionId);
+			var enabled = !thePlayer.isDemon && (!theTable.settings.turnOrder || thePlayer.id === getCurrentPlayer().id);
 			if (enabled) {
 				drawGroups["items"].enable();
 			} else {
@@ -723,7 +724,7 @@ function changeState(state) {
 			}
 			break;
 		case constants.states.SECONDING: 
-			if (!(thePlayer.isDemon || theTable.currentMove.playerId === thePlayer.sessionId)) {
+			if (!(thePlayer.isDemon || theTable.currentMove.playerId === thePlayer.id)) {
 				drawGroups["voting"].enable();
 			}
 			break;
@@ -733,7 +734,7 @@ function changeState(state) {
 			}
 			break;
 		case constants.states.SELECT:
-			if (theTable.currentMove.type === constants.items.SALT) {
+			if (theTable.currentMove.playerId === thePlayer.id && theTable.currentMove.type === constants.items.SALT) {
 				drawGroups["salt"].enable();
 				updateSalt();
 			}
@@ -881,10 +882,6 @@ function cycleActivePlayer(forward) {
 	}
 }
 
-function updateSettings() {
-	socket.emit("update settings", theTable.settings);
-}
-
 function changeAvatar(avatarId) {
 	Cookies.set("avatarId", avatarId);
 	socket.emit("update player settings", {avatarId: avatarId});
@@ -893,6 +890,16 @@ function changeAvatar(avatarId) {
 function changeColor(color) {
 	Cookies.set("color", color);
 	socket.emit("update player settings", {color: color});
+}
+
+function toggleShowTable() {
+	if (buttons["table code"].hideCode) {
+		buttons["table code"].hideCode = false;
+		buttons["table code"].text = theTable ? `Table ${theTable.code}` : "Table ????";
+	} else {
+		buttons["table code"].hideCode = true;
+		buttons["table code"].text = "Table ????";
+	}
 }
 
 function submitChat() {
@@ -916,53 +923,42 @@ function fastChat(msg) {
 
 function makeTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (socket.connected) {
-		const playerSettings = {
-			name: document.getElementById("player-name").value,
-			avatarId: parseInt(Cookies("avatarId")),
-			color: Cookies("color"),
-		}
-		// TODO: make settings and send them here.
-		if (playerSettings.name) {
-			socket.emit("make table", newTableSettings, playerSettings);
-		} else {
-			raiseError("Must provide name to make table!");
-		}
-	} else {
-		raiseError("No connection to server");
+	if (!socket.connected) raiseError("No connection to server");
+
+	console.log(newTableSettings);
+	const playerSettings = {
+		name: document.getElementById("player-name").value,
+		avatarId: parseInt(Cookies("avatarId")),
+		color: Cookies("color"),
 	}
+	if (!playerSettings.name) raiseError("Must provide name to make table!");
+
+	Cookies.set("name", playerSettings.name);
+	socket.emit("make table", newTableSettings, playerSettings);
 }
 
 function joinTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (socket.connected) {
-		const code = document.getElementById("game-code").value;
-		const playerSettings = {
-			name: document.getElementById("player-name").value,
-			avatarId: parseInt(Cookies("avatarId")),
-			color: Cookies("color"),
-		}
-		if (playerSettings.name && code) {
-			socket.emit("join table", code, playerSettings);
-		} else {
-			raiseError("Must provide name and table code to join table!");
-		}
-	} else { 
-		raiseError("No connection to server");
+	if (!socket.connected) raiseError("No connection to server");
+
+	const code = document.getElementById("game-code").value;
+	const playerSettings = {
+		name: document.getElementById("player-name").value,
+		avatarId: parseInt(Cookies("avatarId")),
+		color: Cookies("color"),
 	}
+	if (!playerSettings.name || !code) raiseError("Must provide name and table code to join table!");
+
+	Cookies.set("name", playerSettings.name);
+	socket.emit("join table", code, playerSettings);
 }
 
 function updateTable(table) {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (table) {
-		// Clear existing state in chat.
-		if (!theTable) {
-			clearChat("player-chat");
-			clearChat("demon-chat");
-		}
 		for (var player of table.players) {
 			// Store local player in global var
-			if (player.sessionId === playerId) thePlayer = player;
+			if (player.id === playerId) thePlayer = player;
 			// Make button avatars for players if they don't exist
 			if (!buttons[player.name]) {
 				buttons[player.name] = new ImageButton(PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.name)).setCenter(true).setAbsolute(true);
@@ -983,11 +979,11 @@ function updateTable(table) {
 			setChatHeight();
 			enableInputs();
 		}
-		labels["table"].setData(table.code);
+		if (!buttons["table code"].hideCode) buttons["table code"].text = `Table ${theTable.code}`;
 	} else {
-		theTable = false;
+		theTable = undefined;
 		changeState(constants.states.MAIN_MENU);
-		labels["table"].setData("????");
+		buttons["table code"].text = "Table ????";
 	}
 }
 
@@ -998,8 +994,7 @@ function leaveTable() {
 
 function handleServerDisconnect() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	var msg = "Server disconnected!";
-	raiseError(msg);
+	raiseError("Server disconnected!");
 	theTable = false;
 	changeState(constants.states.INIT);
 }
@@ -1061,6 +1056,7 @@ function clearOverlay() {
 			break;
 		case OVERLAY_SETTINGS:
 			drawGroups["settings"].disable();
+			Cookies.set("table settings", theTable.settings);
 			socket.emit("update settings", theTable.settings);
 			break;
 	}

@@ -2,17 +2,16 @@
 // for drawing on and manipulating the canvas, used by the game client.
 
 //////////  Canvas  \\\\\\\\\\
-function init() {
+function init() { 
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	canvas = document.getElementById("game-canvas");
 	ctx = canvas.getContext("2d");
 
 	document.body.style.backgroundColor = BACKGROUND_COLOR;
-	
+
 	initInputs();
 	initLabels();
 	changeState(constants.states.INIT);
-
 	handleResize();
 }
 
@@ -144,7 +143,6 @@ function handleResize() {
 		hOff = 0;
 	}
 	resizeCanvas(window.innerWidth, window.innerHeight);
-
 	resizeElems();
 }
 
@@ -163,12 +161,6 @@ function resizeElems() {
 		if (config.size) {
 			elem.style.fontSize = (config.size * r) + "px";
 		}
-	}
-
-	// Autofill debug fields
-	if (DEBUG) {
-		document.getElementById("player-name").value = "Player" + Math.floor(Math.random() * 100);
-		document.getElementById("game-code").value = "AAAA";
 	}
 
 	// Resize the demon chats
@@ -349,6 +341,8 @@ function initInputs() {
 	input.maxLength = 16;
 	input.placeholder = "Player Name";
 	input.style.display = "none";
+	input.value = Cookies("name") || "";
+
 	container.appendChild(input);
 
 	input = document.createElement("input");

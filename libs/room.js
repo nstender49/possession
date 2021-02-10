@@ -105,7 +105,7 @@ class Room {
             name: settings.name,
             color: this.getAvailableColor(settings.color),
             avatarId: (settings.avatarId || settings.avatarId === 0) ? settings.avatarId : Math.floor(Math.random() * constants.AVATAR_COUNT),
-            sessionId: id,
+            id: id,
             active: true,
             isDemon: false,
             move: undefined,
@@ -124,7 +124,7 @@ class Room {
         }
         socket.leave(this.code);
         socket.emit("clear state");
-        utils.removeByValue(this.players, this.players.find(p => p.sessionId === id));
+        utils.removeByValue(this.players, this.players.find(p => p.id === id));
         this.updateTable();
     }
 
@@ -218,7 +218,7 @@ class Room {
     sendDemonMessage(msg, targetName) {
         const targetPlayer = this.getPlayerByName(targetName);
         if (!targetPlayer) return;
-        this.emit(targetPlayer.sessionId, "demon msg", msg);
+        this.emit(targetPlayer.id, "demon msg", msg);
         this.emit(this.demonId, "demon msg", msg, targetName);
         this.demonChats[targetName].push({msg: msg});
     }
@@ -233,7 +233,6 @@ class Room {
 
     updatePlayer(id, settings) {
         let player = this.getPlayerById(id);
-        // TODO: object combination
         if (settings.color) player.color = this.getAvailableColor(settings.color);
         if (settings.avatarId) player.avatarId = settings.avatarId;
         this.updateTable();
@@ -250,7 +249,6 @@ class Room {
     _updateSettings(settings) {
         this.settings = settings;
         this.itemsInUse = Object.keys(this.settings.items).filter(item => this.settings.items[item]);
-        // TODO: maybe move this out?
         this.updateTable();
     }
 
@@ -378,7 +376,7 @@ class Room {
             case constants.states.DAY: {
                 if (!(move.type === constants.moves.PASS || move.type === constants.moves.USE_ITEM && this.itemsInUse.includes(move.item))) return result;
                 // If using turn order, only current player can move.
-                if (this.settings.turnOrder && this.getCurrentPlayer().sessionId !== id) return result;
+                if (this.settings.turnOrder && this.getCurrentPlayer().id !== id) return result;
                 // Player has already moved this round.
                 if (tablePlayer.move) return result;
                 // Resource not available.
@@ -389,18 +387,12 @@ class Room {
                 if (move.type === constants.moves.PASS) {
                     tablePlayer.move = {type: constants.moves.PASS, success: true};
                     // If using turn order, always advance. Otherwise, if player passed, check for round end.
-                    if (!this.settings.turnOrder) {
-                        // If any player hasn't moved yet, do not advance round.
-                        for (var p of this.players) {
-                            // If any player hasn't voted yet, do not advance round.
-                            if (p.move === undefined && !p.isDemon) return result;
-                        }
-                    }
+                    if (!this.settings.turnOrder && this.players.find(p => p.move === undefined && !p.isDemon)) return result;
                 } else {
                     tablePlayer.move = {type: move.item};
                     this.currentMove = {
                         type: move.item,
-                        id: tablePlayer.sessionId,
+                        playerId: tablePlayer.id,
                         playerName: tablePlayer.name,
                     };
                 }
@@ -409,7 +401,7 @@ class Room {
             }
             case constants.states.SECONDING: {
                 if (move.type !== constants.moves.SECOND) return result;
-                if (id === this.currentMove.id) return result;
+                if (id === this.currentMove.playerId) return result;
                 if (tablePlayer.isExorcised) return result;
 
                 tablePlayer.voted = true;
@@ -417,12 +409,7 @@ class Room {
                             
                 // Advance if any player voted yes, or if all player have voted.
                 result.handled = true;
-                if (!move.vote) {
-                    for (var p of this.players) {
-                        // If any player hasn't voted yet, do not advance round.
-                        if (p.sessionId !== this.currentMove.id && !p.isExorcised && !p.voted && !p.isDemon) return result;
-                    }
-                }
+                if (!move.vote && this.players.find(p => !(p.id === this.currentMove.playerId || p.isExorcised || p.voted || p.isDemon))) return result;
                 result.advance = true;
                 break;
             }
@@ -435,16 +422,13 @@ class Room {
                 
                 // If all non-demon players have voted, advance round.
                 result.handled = true;
-                for (var p of this.players) {
-                    // If any player hasn't voted yet, do not advance round.
-                    if (!p.voted && !p.isDemon && !p.isExorcised) return result;
-                }
+                if (this.players.find(p => !(p.voted || p.isDemon || p.isExorcised))) return result;
                 result.advance = true;
                 break;
             }
             case constants.states.SELECT: {
                 if (move.type !== constants.moves.SELECT) return result;
-                if (id !== this.currentMove.id) return result;
+                if (id !== this.currentMove.playerId) return result;
                 if (this.currentMove.type === constants.items.SALT) {
                     // Player first selects salt line (shows to all users), then submit separately.
                     if (move.line) {
@@ -474,7 +458,7 @@ class Room {
             }
             case constants.states.INTERPRET: {
                 if (move.type !== constants.moves.INTERPRET) return result;
-                if (id !== this.currentMove.id) return result;
+                if (id !== this.currentMove.playerId) return result;
                 this.rodDisplay = move.choice;
                 result.handled = true;
                 // We do not advance round, this is handled by timer
@@ -571,17 +555,17 @@ class Room {
             }   
             // Move to voting or back to day
             case constants.states.SECONDING: {
-                let tally = this.tallyVotes();
-                if (tally.yes.length > 0) {
+                const tally = this.tallyVotes();
+                if (tally[true].length > 0) {
                     this.state = constants.states.VOTING;
-                    this.message = `${this.currentMove.playerName} wants to ${ITEM_PROPOSE_MSG[this.currentMove.type]} and ${tally.yes[0]} seconded. Vote now.`;
-                    this.broadcastMessage(`<c>${tally.yes[0]}</c> seconds <c>${this.currentMove.playerName}</c>'s proposal`);
+                    this.message = `${this.currentMove.playerName} wants to ${ITEM_PROPOSE_MSG[this.currentMove.type]} and ${tally[true][0]} seconded. Vote now.`;
+                    this.broadcastMessage(`<c>${tally[true][0]}</c> seconds <c>${this.currentMove.playerName}</c>'s proposal`);
                     this.autoAdvanceState(this.settings.times[constants.times.VOTE], true);
                 } else {
                     this.state = constants.states.DISPLAY;
                     this.message = `No player seconds ${this.currentMove.playerName}'s proposal`
                     this.broadcastMessage(`No player seconds <c>${this.currentMove.playerName}</c>'s proposal`);
-                    let tablePlayer = this.getPlayerById(this.currentMove.id, table);
+                    let tablePlayer = this.getPlayerById(this.currentMove.playerId, table);
                     tablePlayer.move.success = false;
                     this.autoAdvanceState(FAILED_SECOND_DISPLAY_SEC);
                 }
@@ -590,25 +574,25 @@ class Room {
             }
             // Move to player select or back to day
             case constants.states.VOTING: {
-                let tally = this.tallyVotes(true);
-                let tablePlayer = this.getPlayerById(this.currentMove.id);
-                if (tally.yes.length >= tally.no.length) {
+                const tally = this.tallyVotes(true);
+                const success = tally[true] > tally[false];
+                const tallyStr = `${tally[true].length}-${tally[false].length}-${tally[undefined].length}`;
+                if (success) {
                     this.state = constants.states.SELECT;
                     let action = this.currentMove.type === constants.items.SALT ? "draw a line" : "select a target";
-                    this.message = `The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}. ${this.currentMove.playerName} will now ${action}.`;
-                    this.broadcastMessage(`The vote succeeds ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}.`);
-                    tablePlayer.move.success = true;
+                    this.message = `The vote succeeds ${tallyStr}. ${this.currentMove.playerName} will now ${action}.`;
+                    this.broadcastMessage(`The vote succeeds ${tallyStr}.`);
                     this.autoAdvanceState(this.settings.times[constants.times.SELECT], true);
                 } else {
                     this.state = constants.states.DISPLAY;
-                    this.message = `The vote fails ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}`;
-                    this.broadcastMessage(`The vote fails ${tally.yes.length}-${tally.no.length}-${tally.abstain.length}.`);
-                    tablePlayer.move.success = false;
+                    this.message = `The vote fails ${tallyStr}`;
+                    this.broadcastMessage(`The vote fails ${tallyStr}.`);
                     this.autoAdvanceState(FAILED_VOTE_DISPLAY_SEC);
                 }
-                if (tally.yes.length > 0) this.broadcastMessage(`    Yes: ${tally.yes.map(p => `<c>${p}</c>`).join(", ")}`);
-                if (tally.no.length > 0) this.broadcastMessage(`    No: ${tally.no.map(p => `<c>${p}</c>`).join(", ")}`);
-                if (tally.abstain.length > 0) this.broadcastMessage(`    Abstain: ${tally.abstain.map(p => `<c>${p}</c>`).join(", ")}`);
+                this.getPlayerById(this.currentMove.playerId).move.success = success;
+                if (tally[true].length > 0) this.broadcastMessage(`    Yes: ${tally[true].map(p => `<c>${p}</c>`).join(", ")}`);
+                if (tally[false].length > 0) this.broadcastMessage(`    No: ${tally[false].map(p => `<c>${p}</c>`).join(", ")}`);
+                if (tally[undefined].length > 0) this.broadcastMessage(`    Abstain: ${tally[undefined].map(p => `<c>${p}</c>`).join(", ")}`);
                 break;
             }
             // Move to display result
@@ -673,7 +657,7 @@ class Room {
                         this.rodResult = is;
                         this.rodDisplay = undefined;
                         this.message = `${this.currentMove.playerName} is interpreting the results of the divining rod`;
-                        this.emit(this.currentMove.id, "rod", is);
+                        this.emit(this.currentMove.playerId, "rod", is);
                         this.timers[constants.timers.MOVE] = getTimerValue(this.settings.times[constants.times.INTERPRET]);
                         break;
                     }
@@ -687,7 +671,7 @@ class Room {
                         let targetTablePlayer = this.getPlayerByName(this.currentMove.targetName);
                         targetTablePlayer.isExorcised = true;
                         if (!targetTablePlayer.move) targetTablePlayer.move = {type: constants.moves.PASS};
-                        this.emit(targetTablePlayer.sessionId, "pop up", "You are unconscious until tomorrow, do not speak!");
+                        this.emit(targetTablePlayer.id, "pop up", "You are unconscious until tomorrow, do not speak!");
                         break;
                     }
                     case constants.items.SALT: {
@@ -840,20 +824,11 @@ class Room {
         }
 
         // Check if any player can make a move.
-        // TODO: reduce
-        let resourceCount = 0;
-        for (var item of this.itemsInUse) {
-            resourceCount += this.resources[item];
-        }
-        if (resourceCount === 0) return false;
+        if (!this.itemsInUse.reduce((sum, item) => sum += this.resources[item], 0)) return false;
 
         // If any player can still make a move, go back to day, otherwise go to night.
-        // TODO: fincd
-        for (var tablePlayer of this.players) {
-            if (tablePlayer.move === undefined && !tablePlayer.isDemon && !tablePlayer.isExorcised) {
-                return true;
-            }
-        }
+        if (this.players.find(p => p.move === undefined && !p.isDemon && !p.isExorcised)) return true;
+
         return false;
     }
 
@@ -909,7 +884,7 @@ class Room {
             this.demonCandidate = undefined;
         }
         if (this.demonCandidate) utils.removeByValue(this.demonCandidates, this.demonCandidate);
-        if (this.demonCandidates.length === 0) this.demonCandidates = this.players.map(p => p.sessionId);
+        if (this.demonCandidates.length === 0) this.demonCandidates = this.players.map(p => p.id);
         let index = Math.floor(Math.random() * this.demonCandidates.length);
         this.demonCandidate = this.demonCandidates[index];
         this.emit(this.demonCandidate, "accept demon");
@@ -919,6 +894,7 @@ class Room {
         this.round += 1;
         this.state = constants.states.NIGHT;
         this.demonMessage = NIGHT_DEMON_MSG;
+        this.clearTimer(constants.timers.ROUND);
 
         this.clearMoves();
         this.clearVotes();
@@ -969,7 +945,7 @@ class Room {
             this.damnedPlayers.push(targetName);
         }
         this.emit(this.demonId, "possessed players", this.possessedPlayers);
-        this.emit(this.getPlayerByName(targetName).sessionId, "possession", doPossess);
+        this.emit(this.getPlayerByName(targetName).id, "possession", doPossess);
         return true;
     }
 
@@ -987,27 +963,16 @@ class Room {
     }
 
     tallyVotes(makePublic) {
-        var tally = {
-            yes: [],
-            no: [],
-            abstain: [],
-        };
-        for (var tablePlayer of this.players) {
-            if (tablePlayer.isDemon) continue;
-            if (tablePlayer.isExorcised) continue;
-
-            // Tally vote.
-            const vote = this.votes[tablePlayer.name];
-            if (vote === undefined) {
-                tally.abstain.push(tablePlayer.name);
-            } else if (vote) {
-                tally.yes.push(tablePlayer.name);
-            } else {
-                tally.no.push(tablePlayer.name);
-            }
-            // Show the vote at the end of the round.
-            if (makePublic) tablePlayer.vote = vote;
+        const tally = {
+            true: [],
+            false: [],
+            undefined: [],
         }
+        this.players.forEach(p => {
+            if (p.isDemon || p.isExorcised) return;
+            tally[this.votes[p.name]].push(p.name);
+            if (makePublic) p.vote = this.votes[p.name];
+        });
         return tally;
     }
 
@@ -1048,11 +1013,11 @@ class Room {
     }
 
     getPlayerById(id) {
-        return this.players.find(p => p.sessionId === id);
+        return this.players.find(p => p.id === id);
     }
 
     isOwner(id) {
-        return this.players.length > 0 && this.players[0].sessionId === id;
+        return this.players.length > 0 && this.players[0].id === id;
     }
 
     getCurrentPlayer() {
@@ -1071,7 +1036,7 @@ class Room {
     nextPlayer(index) {
         do {
             index = (index + 1).mod(this.players.length);
-        } while(this.players[index].sessionId === this.demonId || this.players[index].isExorcised);
+        } while(this.players[index].id === this.demonId || this.players[index].isExorcised);
         return index;
     }
 

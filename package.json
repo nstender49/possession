@@ -15,12 +15,14 @@
     "cookies-js": "^1.2.3",
     "express": "^4.17.1",
     "express-session": "^1.17.1",
+    "js-cookie": "^2.2.1",
     "mocha": "^8.2.1",
     "pg": "^8.5.1",
     "pg-hstore": "^2.3.3",
     "sequelize": "^6.5.0",
     "sequelize-cli": "^6.2.0",
     "socket.io": "^1.4.4",
-    "timesync": "^1.0.8"
+    "timesync": "^1.0.8",
+    "uuid": "^8.3.2"
   }
 }

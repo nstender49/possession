@@ -1,5 +1,5 @@
 function isTableOwner() {
-	return theTable && theTable.players.length > 0 && theTable.players[0].sessionId === playerId;
+	return theTable && theTable.players.length > 0 && theTable.players[0].id === playerId;
 }
 
 function demonAtTable() {
