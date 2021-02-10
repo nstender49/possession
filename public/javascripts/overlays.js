@@ -146,7 +146,7 @@ function drawSettings() {
 		dy += margin;
 		drawText(utils.title(setting), 0.6, dy + 0.01, 15, "right");
 		buttons[`decrease ${setting}`].setPosition(0.65, dy);
-		drawText(formatSec(theTable.settings.times[setting]), 0.7, dy + 0.01, 15);
+		drawText(utils.formatSec(theTable.settings.times[setting]), 0.7, dy + 0.01, 15);
 		buttons[`increase ${setting}`].setPosition(0.75, dy);
 	}
 

@@ -9,4 +9,11 @@
         return (min ? `${min}m` : "") + ((sec || !min) ? `${sec.toString().padStart(2, "0")}s` : "");
     }
 
+    
+    exports.removeByValue = function(arr, val) {
+        var index = arr.indexOf(val);
+        if (index == -1) return undefined;
+        return arr.splice(index, 1)[0];
+    }
+
 })(typeof exports === 'undefined'? this['utils']={}: exports);

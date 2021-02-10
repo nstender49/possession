@@ -77,4 +77,7 @@
 
     exports.AVATAR_COUNT = 50;
 
+    exports.ROUND_OVER_DISPLAY_SEC = 3;
+
+
 })(typeof exports === 'undefined'? this['constants']={}: exports);

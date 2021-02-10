@@ -136,9 +136,14 @@ var ts = timesync.create({
 
 socket.on("player id", function(id) {
 	playerId = id;
+	updateTable();
 });
 
-socket.on("update table", function(table) {
+socket.on("clear state", function() {
+	updateTable();
+});
+
+socket.on("update state", function(table) {
 	updateTable(table);
 });
 
@@ -882,12 +887,12 @@ function updateSettings() {
 
 function changeAvatar(avatarId) {
 	Cookies.set("avatarId", avatarId);
-	socket.emit("change avatar", avatarId);
+	socket.emit("update player settings", {avatarId: avatarId});
 }
 
 function changeColor(color) {
 	Cookies.set("color", color);
-	socket.emit("change color", color);
+	socket.emit("update player settings", {color: color});
 }
 
 function submitChat() {
@@ -912,12 +917,14 @@ function fastChat(msg) {
 function makeTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (socket.connected) {
-		var name = document.getElementById("player-name").value;
-		var avatarId = parseInt(Cookies("avatarId"));
-		var color = Cookies("color");
+		const playerSettings = {
+			name: document.getElementById("player-name").value,
+			avatarId: parseInt(Cookies("avatarId")),
+			color: Cookies("color"),
+		}
 		// TODO: make settings and send them here.
-		if (name) {
-			socket.emit("make table", name, avatarId, color, newTableSettings);
+		if (playerSettings.name) {
+			socket.emit("make table", newTableSettings, playerSettings);
 		} else {
 			raiseError("Must provide name to make table!");
 		}
@@ -929,12 +936,14 @@ function makeTable() {
 function joinTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (socket.connected) {
-		var name = document.getElementById("player-name").value;
-		var code = document.getElementById("game-code").value;
-		var avatarId = parseInt(Cookies("avatarId"));
-		var color = Cookies("color");
-		if (name && code) {
-			socket.emit("join table", code, name, avatarId, color);
+		const code = document.getElementById("game-code").value;
+		const playerSettings = {
+			name: document.getElementById("player-name").value,
+			avatarId: parseInt(Cookies("avatarId")),
+			color: Cookies("color"),
+		}
+		if (playerSettings.name && code) {
+			socket.emit("join table", code, playerSettings);
 		} else {
 			raiseError("Must provide name and table code to join table!");
 		}
