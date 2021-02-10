@@ -104,6 +104,7 @@ var soundEnabled = false;
 var socket = io();
 var labels = [];
 var buttons = [];
+var elems = [];
 var drawGroups = [];
 var sounds = [];
 
@@ -185,20 +186,15 @@ socket.on("rod", function(isPossessed) {
 socket.on("possessed players", function(players) {
 	while (players.length > demonChats.length) {
 		// New possessed player
-		var container = document.getElementById("content");
-		var newChat = document.createElement("ul");
-		newChat.className = "demon-chat";
-		newChat.style.display = "block";
-		newChat.style.fontSize = (10 * r) + "px";
+		var newChat = new DocumentElement("ul").setSize(10);
+		newChat.elem.className = "demon-chat";
 		demonChats.push(newChat);
-		container.appendChild(newChat);
 	}
 	while (players.length < demonChats.length) {
 		// Player no longer possessed
 		for (var i = 0; i < possessedPlayers.length; i++) {
 			if (!players.includes(possessedPlayers[i])) {
-				var container = document.getElementById("content");
-				container.removeChild(demonChats[i]);
+				demonChats[i].remove();
 				demonChats.splice(i, 1);
 				break;
 			}
@@ -228,8 +224,8 @@ socket.on("init settings", function(settings) {
 	DEBUG = settings.DEBUG;
 	if (DEBUG) {
 		newTableSettings.minPlayers = 3;
-		document.getElementById("player-name").value = "Player" + Math.floor(Math.random() * 100);
-		document.getElementById("game-code").value = "AAAA";
+		elems["player-name"].elem.value = "Player" + Math.floor(Math.random() * 100);
+		elems["game-code"].elem.value = "AAAA";
 	}
 	handleResize();
 });
@@ -253,6 +249,14 @@ function initLabels() {
 		buttons["make table"],
 		buttons["join table"],
 	]);
+	elems["player-name"] = new DocumentElement("input", "player-name").setPosition(0.288, 0.63).setDims(0.3, 0.09).setSize(40);
+	elems["player-name"].elem.maxLength = 16;
+	elems["player-name"].elem.placeholder = "Player Name";
+	elems["player-name"].elem.value = Cookies("name") || "";
+	elems["game-code"] = new DocumentElement("input", "game-code").setPosition(0.594, 0.63).setDims(0.12, 0.09).setSize(40);
+	elems["game-code"].elem.maxLength = 4;
+	elems["game-code"].elem.placeholder = "CODE";
+	elems["game-code"].elem.style.textTransform = "uppercase";
 
 	// Table
 	labels["table_img"] = new ImageLabel(IMAGES[TABLE]).setCenter(true).setPosition(0.3, 0.5).setDims(0.4)
@@ -337,7 +341,13 @@ function initLabels() {
 		buttons["game-log"],
 		buttons["demon-chat"],
 		buttons["player-chat"],
-	])
+	]);
+	elems["chat-input"] = new DocumentElement("input", "chat-input").setPosition(0.6, 0.9).setDims(0.32, 0.05).setSize(10);
+	elems["chat-input"].autocomplete = "off";
+	elems["player-chat"] = new DocumentElement("ul", "player-chat").setPosition(0.6, 0.07).setDims(0.35, 0.83).setSize(10);
+	elems["game-log"] = new DocumentElement("ul", "game-log").setPosition(0.6, 0.07).setDims(0.35, 0.83).setSize(10);
+	elems["demon-chat"] = new DocumentElement("ul", "demon-chat").setPosition(0.6, 0.07).setDims(0.35, 0.25).setSize(10);
+	elems["demon-chat"].elem.className = "demon-chat";
 
 	// Demon / interfere
 	labels["interfere"] = new Label("Interfere:", 20).setPosition(0.62, 0.23);
@@ -438,24 +448,22 @@ function initLabels() {
 		buttons["submit salt"],
 		buttons["clear salt"],
 	]);
+
+	// Debug element
+	elems["sessionId"] = new DocumentElement("input", "sessionId").setPosition(0.005, 0.9).setDims(0.07, 0.04).setSize(10);
+	elems["sessionId"].elem.value = Cookies("session");
 }
 
 ////////// Input elements \\\\\\\\\\
 
-function displayElem(elem, doDisplay) {
-	elem.style.display = doDisplay ? "block" : "none";
-}
-
 function disableInputs() {
 	setElemDisplay();
-	for (var c of demonChats) {
-		displayElem(c, false);
-	}
+	for (var c of demonChats) c.hide();
 }
 
 function setElemDisplay(inputs = []) {
-	for (var name in ELEM_CONFIGS) {
-		displayElem(document.getElementById(name), inputs.includes(name));
+	for (var name in elems) {
+		inputs.includes(name) ? elems[name].show() : elems[name].hide();
 	}
 }
 
@@ -463,22 +471,21 @@ function enableInputs() {
 	switch (gameState) {
 		case undefined:
 		case constants.states.INIT:
-		case constants.states.MAIN_MENU:
-			setElemDisplay(["player-name", "game-code"]);
+		case constants.states.MAIN_MENU: {
+			let inputs = ["player-name", "game-code"];
+			if (DEBUG) inputs.push("sessionId");
+			setElemDisplay(inputs);
 			break;
-		default:
-			var inputs = ["chat-input", "game-log", "player-chat"];
+		}
+		default: {
+			let inputs = ["chat-input", "game-log", "player-chat"];
 			if (thePlayerIsPossessed) inputs.push("demon-chat");
 			setElemDisplay(inputs);
 			drawGroups["chat"].enable();
 			if (!thePlayerIsPossessed) buttons["demon-chat"].disable();
-
-			if (thePlayer.isDemon) {
-				for (var c of demonChats) {
-					displayElem(c, true);
-				}
-			}
+			if (thePlayer.isDemon) for (var c of demonChats) c.show();
 			break;
+		}
 	}
 }
 
@@ -497,17 +504,12 @@ function setChatHeight() {
 
 			for (var name of ["game-log", "player-chat"]) {
 				buttons[name].setDims(CHAT_W, DIV_HEIGHT);
-				ELEM_CONFIGS[name].x = CHAT_X;
-				ELEM_CONFIGS[name].w = CHAT_W;
 			}
 
 			buttons["game-log"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
 			buttons["player-chat"].setPosition(CHAT_X, CHAT_TOP + CHAT_HEIGHT * 0.5);
 
-			ELEM_CONFIGS["chat-input"].x = 0.35;
-			ELEM_CONFIGS["chat-input"].w = 0.30;
-			ELEM_CONFIGS["chat-input"].y = 0.90;
-			ELEM_CONFIGS["chat-input"].h = 0.05;
+			elems["chat-input"].setPosition(0.35, 0.9).setDims(0.3, 0.05);
 
 			buttons["player-chat"].setFixed(false).setLimits(CHAT_TOP + DIV_HEIGHT, CHAT_BOT - DIV_HEIGHT);
 
@@ -522,10 +524,10 @@ function setChatHeight() {
 
 		// Set chats based on dividers
 		for (var name of ["game-log", "player-chat"]) {
-			ELEM_CONFIGS[name].y = buttons[name].yy + DIV_HEIGHT;
+			elems[name].setPosition(CHAT_X, buttons[name].yy + DIV_HEIGHT);
 		}
-		ELEM_CONFIGS["game-log"].h = buttons["player-chat"].yy - ELEM_CONFIGS["game-log"].y;
-		ELEM_CONFIGS["player-chat"].h = CHAT_BOT - ELEM_CONFIGS["player-chat"].y;
+		elems["game-log"].setDims(CHAT_W, buttons["player-chat"].yy - elems["game-log"].yy);
+		elems["player-chat"].setDims(CHAT_W, CHAT_BOT - elems["player-chat"].yy);
 	} else {		
 		const CHAT_X = 0.60;
 		const CHAT_W = 0.35;
@@ -538,18 +540,13 @@ function setChatHeight() {
 		if (buttons["game-log"].xx !== CHAT_X) {
 			for (var name of ["game-log", "player-chat", "demon-chat"]) {
 				buttons[name].setDims(CHAT_W, DIV_HEIGHT);
-				ELEM_CONFIGS[name].x = CHAT_X;
-				ELEM_CONFIGS[name].w = CHAT_W;
 			}
 
 			buttons["demon-chat"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
 			buttons["game-log"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
 			buttons["player-chat"].setPosition(CHAT_X, CHAT_TOP + CHAT_HEIGHT * 0.5);
 
-			ELEM_CONFIGS["chat-input"].x = 0.60;
-			ELEM_CONFIGS["chat-input"].w = 0.32;
-			ELEM_CONFIGS["chat-input"].y = CHAT_BOT;
-			ELEM_CONFIGS["chat-input"].h = 0.05;	
+			elems["chat-input"].setPosition(0.6, CHAT_BOT).setDims(0.32, 0.05);	
 
 			buttons["submit chat"].setPosition(0.935, 0.925);
 
@@ -580,11 +577,11 @@ function setChatHeight() {
 		}
 
 		for (var name of ["demon-chat", "game-log", "player-chat"]) {
-			ELEM_CONFIGS[name].y = buttons[name].yy + DIV_HEIGHT;
+			elems[name].setPosition(CHAT_X, buttons[name].yy + DIV_HEIGHT);
 		}
-		ELEM_CONFIGS["demon-chat"].h = buttons["game-log"].yy - ELEM_CONFIGS["demon-chat"].y;
-		ELEM_CONFIGS["game-log"].h = buttons["player-chat"].yy - ELEM_CONFIGS["game-log"].y;
-		ELEM_CONFIGS["player-chat"].h = CHAT_BOT - ELEM_CONFIGS["player-chat"].y;
+		elems["demon-chat"].setDims(CHAT_W, buttons["game-log"].yy - elems["demon-chat"].yy);
+		elems["game-log"].setDims(CHAT_W, buttons["player-chat"].yy - elems["game-log"].yy);
+		elems["player-chat"].setDims(CHAT_W, CHAT_BOT - elems["player-chat"].yy);
 	}
 	resizeElems();
 }
@@ -596,7 +593,7 @@ var chatBgnd = false;
 function addMessage(chat, msg, player) {
 	// Handle simple text messages;
 	var item = document.createElement("li");
-	var messages = document.getElementById(chat);
+	var messages = elems[chat];
 
 	if (chat === "player-chat") {
 		if (player) {
@@ -609,7 +606,7 @@ function addMessage(chat, msg, player) {
 				addMarkedUpContent(item, `<c>${player}</c>: `);
 			}
 		} else {
-			messages = document.getElementById("game-log");
+			messages = elems["game-log"];
 		}
 	} else if (thePlayer.isDemon) {
 		var chatIdx = possessedPlayers.indexOf(player);
@@ -663,14 +660,11 @@ function addSpan(item, text) {
 }
 
 function clearChat(chat) {
-	document.getElementById(chat).innerHTML = "";
+	elems[chat].elem.innerHTML = "";
 }
 
 function removeDemonChats() {
-	var container = document.getElementById("content");
-	for (var chat of demonChats) {
-		container.removeChild(chat);
-	}
+	demonChats.forEach(c => c.remove());
 	demonChats = [];
 }
 
@@ -903,7 +897,7 @@ function toggleShowTable() {
 }
 
 function submitChat() {
-	var input = document.getElementById("chat-input");
+	const input = elems["chat-input"].elem;
 	if (input.value) {
 		if (ALT && thePlayer.isDemon) {
 			for (var player of possessedPlayers) {
@@ -917,8 +911,7 @@ function submitChat() {
 }
 
 function fastChat(msg) {
-	var input = document.getElementById("chat-input");
-	input.value += msg + " ";
+	elems["chat-input"].elem.value += msg + " ";
 }
 
 function makeTable() {
@@ -927,7 +920,7 @@ function makeTable() {
 
 	console.log(newTableSettings);
 	const playerSettings = {
-		name: document.getElementById("player-name").value,
+		name: elems["player-name"].elem.value,
 		avatarId: parseInt(Cookies("avatarId")),
 		color: Cookies("color"),
 	}
@@ -941,9 +934,9 @@ function joinTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (!socket.connected) raiseError("No connection to server");
 
-	const code = document.getElementById("game-code").value;
+	const code = elems["game-code"].elem.value;
 	const playerSettings = {
-		name: document.getElementById("player-name").value,
+		name: elems["player-name"].elem.value,
 		avatarId: parseInt(Cookies("avatarId")),
 		color: Cookies("color"),
 	}

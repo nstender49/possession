@@ -139,9 +139,7 @@ class Room {
             this.emit(id, "possessed players", this.possessedPlayers);
             this.emit(id, "update interfere", game.interfereUses);
             this.emit(id, "smudged player", game.smudgedPlayer);
-            for (const [name, log] in this.demonChats) {
-                log.map(l => this.emit(id, "demon msg", l.msg, name));
-            }
+            for (const [name, log] in this.demonChats) log.map(l => this.emit(id, "demon msg", l.msg, name));
         }
         if (this.possessedPlayers.includes(tablePlayer.name)) {
             this.emit(id, "possession", true);
@@ -1042,7 +1040,7 @@ class Room {
 
     getAvailableColor(perference) {
         const tableColors = this.players.map(p => p.color);
-        if (!tableColors.includes(perference)) return perference;
+        if (perference && !tableColors.includes(perference)) return perference;
         return constants.PLAYER_COLORS.find(c => !tableColors.includes(c));
     }
 }

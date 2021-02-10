@@ -19,13 +19,13 @@ var io = require("./libs/game_manager").listen(server);  // Start Socket.io serv
 
 app.set("port", (process.env.PORT || 3001));  // Use either given port or 3001 as default
 app.use(express.static("public"));  // Staticly serve pages, using directory 'public' as root 
+app.use("/timesync", timesyncServer.requestHandler);
 
 // User connects to server
 app.get("/", function(req, res) {
 	// Will serve static pages, no need to handle requests
 });
 
-app.use("/timesync", timesyncServer.requestHandler);
 
 // If any page not handled already handled (ie. doesn't exists)
 app.get("*", function(req, res) {

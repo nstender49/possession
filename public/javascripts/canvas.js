@@ -1,7 +1,3 @@
-// This file manages the game's logic for most visual things and contains various functions
-// for drawing on and manipulating the canvas, used by the game client.
-
-//////////  Canvas  \\\\\\\\\\
 function init() { 
 	if (logFull) console.log("%s(%j)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	canvas = document.getElementById("game-canvas");
@@ -9,7 +5,6 @@ function init() {
 
 	document.body.style.backgroundColor = BACKGROUND_COLOR;
 
-	initInputs();
 	initLabels();
 	changeState(constants.states.INIT);
 	handleResize();
@@ -148,21 +143,8 @@ function handleResize() {
 
 function resizeElems() {
 	// Resize input boxes
-	for (var name in ELEM_CONFIGS) {
-		var config = ELEM_CONFIGS[name];
-		var elem = document.getElementById(name);
-		elem.style.position = "absolute";
-		elem.style.left = (canvas.getBoundingClientRect().left + wOff + cvW * config.x) + "px";
-		elem.style.top = (canvas.getBoundingClientRect().top + hOff + cvH * config.y) + "px";
-		if (config.w) {
-			elem.style.width = (cvW * config.w) + "px";
-			elem.style.height = (cvH * config.h) + "px";
-		}
-		if (config.size) {
-			elem.style.fontSize = (config.size * r) + "px";
-		}
-	}
-
+	for (var name in elems) elems[name].resize();
+	
 	// Resize the demon chats
 	if (!theTable) return;
 	var numToPossess = Math.ceil(numPlayersAtTable() / 2);
@@ -177,13 +159,7 @@ function resizeElems() {
 		var dy = y + h * Math.floor(i / 3) + margin + nameHeight;
 		var dw = w - margin * 2;
 		var dh = h - margin * 2 - nameHeight;
-		var elem = demonChats[i];
-		elem.style.position = "absolute";
-		elem.style.left = (canvas.getBoundingClientRect().left + cvW * dx + wOff) + "px";
-		elem.style.top = (canvas.getBoundingClientRect().top + cvH * dy + hOff) + "px";
-		elem.style.width = (cvW * dw) + "px";
-		elem.style.height = (cvH * dh) + "px";
-		elem.style.fontSize = (10 * r) + "px";
+		demonChats[i].setPosition(dx, dy).setDims(dw, dh).resize();
 	}
 }
 
@@ -333,54 +309,6 @@ function drawDemonView() {
 	}
 }
 
-function initInputs() {
-	var container = document.getElementById("content");
-	var input = document.createElement("input");
-	input.id = "player-name";
-	input.type = "text";
-	input.maxLength = 16;
-	input.placeholder = "Player Name";
-	input.style.display = "none";
-	input.value = Cookies("name") || "";
-
-	container.appendChild(input);
-
-	input = document.createElement("input");
-	input.id = "game-code";
-	input.type = "text";
-	input.maxLength = 4;
-	input.placeholder = "CODE";
-	input.style.textTransform = "uppercase";
-	input.style.display = "none";
-	container.appendChild(input);
-
-	input = document.createElement("input");
-	input.id = "chat-input";
-	input.type = "text";
-	input.autocomplete = "off";
-	input.style.display = "none";
-	container.appendChild(input);
-
-	input = document.createElement("ul");
-	input.id = "player-chat";
-	input.type = "ul";
-	input.style.display = "none";
-	container.appendChild(input);
-
-	input = document.createElement("ul");
-	input.id = "game-log";
-	input.type = "ul";
-	input.style.display = "none";
-	container.appendChild(input);
-
-	input = document.createElement("ul");
-	input.id = "demon-chat";
-	input.type = "ul";
-	input.className = "demon-chat";
-	input.style.display = "none";
-	container.appendChild(input);
-}
-
 window.requestAnimFrame = (function () {
 	return window.requestAnimationFrame ||
 		   window.webkitRequestAnimationFrame ||
@@ -403,52 +331,6 @@ var clickCursor = false,
 	BUTTON_BORDER = "#5c0000",
 	BUTTON_TEXT = "#ffffff",
 	BUTTON_DISABLED = "gray";
-
-// TODO: prob don't need this anymore, remove it
-var ELEM_CONFIGS = {
-	"player-name": {
-		x: 0.288,
-		y: 0.63,
-		w: 0.3,
-		h: 0.09,
-		size: 40,
-	},
-	"game-code": {
-		x: 0.594,
-		y: 0.63,
-		w: 0.12,
-		h: 0.09,
-		size: 40,
-	},
-	"player-chat": {
-		x: 0.60,
-		y: 0.07,
-		w: 0.35,
-		h: 0.83,
-		size: 10,
-	},
-	"game-log": {
-		x: 0.60,
-		y: 0.07,
-		w: 0.35,
-		h: 0.83,
-		size: 10,
-	},
-	"chat-input": {
-		x: 0.6,
-		y: 0.9,
-		w: 0.32,
-		h: 0.05,
-		size: 10,
-	},
-	"demon-chat": {
-		x: 0.6,
-		y: 0.7,
-		w: 0.35,
-		h: 0.25,
-		size: 10,
-	},
-};
 
 init();
 animate();

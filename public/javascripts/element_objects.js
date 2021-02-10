@@ -112,7 +112,6 @@ class Element {
 		this.visible = true;
 		return this;
 	}
-
 	
 	dims() {
 		var w = this.width * (this.absolute ? 1 : cvW);
@@ -134,6 +133,52 @@ class Element {
 			bot: y + dims.height,
 			width: dims.width,
 			height: dims.height,
+		}
+	}
+}
+
+class DocumentElement extends Element {
+	// TODO: set element properties via something
+	constructor(type, id) {
+		super();
+		this.elem = document.createElement(type);
+		if (id) this.elem.id = id;
+		this.elem.style.display = "none";
+		document.getElementById("content").appendChild(this.elem);
+	}
+
+	// TODO: constructor?
+	remove() {
+		document.getElementById("content").removeChild(this.elem);
+	}
+
+	appendChild(child) {
+		this.elem.appendChild(child);
+	}
+
+	setSize(val) {
+		if (val) this.size = val;
+		return this;
+	}
+
+	show() {
+		this.elem.style.display = "block";
+	}
+
+	hide() {
+		this.elem.style.display = "none";
+	}
+
+	resize() {
+		this.elem.style.position = "absolute";
+		this.elem.style.left = (canvas.getBoundingClientRect().left + wOff + cvW * this.xx) + "px";
+		this.elem.style.top = (canvas.getBoundingClientRect().top + hOff + cvH * this.yy) + "px";
+		if (this.width) {
+			this.elem.style.width = (cvW * this.width) + "px";
+			this.elem.style.height = (cvH * this.height) + "px";
+		}
+		if (this.size) {
+			this.elem.style.fontSize = (this.size * r) + "px";
 		}
 	}
 }
