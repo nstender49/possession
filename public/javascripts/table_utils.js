@@ -22,11 +22,12 @@ function getSelectedPlayer() {
 	}
 }
 
+function getPlayer(id) {
+	return theTable.players.find(p => p.id === id);
+}
+
 function getPlayerByName(name) {
-	for (var player of theTable.players) {
-		if (player.name === name) return player;
-	}
-	return false;
+	return theTable.players.find(p => p.name.trim() === name.trim());
 }
 
 function getCurrentPlayer() {

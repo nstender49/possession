@@ -106,6 +106,8 @@ class Room {
 
         if (existing) {
             existing.active = true;
+            if (this.currentMove.playerId === existing.id) this.currentMove.playerId = id;
+            if (this.demonCandidate === existing.id) this.demonCandidate = id;
             existing.id = id;
         } else {
             this.players.push({
@@ -138,7 +140,7 @@ class Room {
 
     markPlayerActive(socket, id) {
         // Get player to restore. This may fail if player was replaced or booted.
-        const tablePlayer = this.getPlayerById(id);
+        const tablePlayer = this.getPlayer(id);
         if (!tablePlayer) return false;
         tablePlayer.active = true;
         this.sockets[id] = socket;
@@ -164,7 +166,7 @@ class Room {
     }
 
     markPlayerInactive(id) {
-        const tablePlayer = this.getPlayerById(id);
+        const tablePlayer = this.getPlayer(id);
         if (!tablePlayer) return;
         tablePlayer.active = false;
         this.sockets[id].leave(this.code);
@@ -214,12 +216,12 @@ class Room {
         this.io.to(this.code).emit(...args);
     }
 
-    sendMessage(id, msg, targetName) {
+    sendMessage(id, msg, targetId) {
         if (this.isDemon(id)) {
-            if (!targetName) return;
-            this.sendDemonMessage(msg, targetName);
+            if (!targetId) return;
+            this.sendDemonMessage(msg, targetId);
         } else {
-            this.broadcastMessage(msg, this.getPlayerById(id).name);
+            this.broadcastMessage(msg, this.getPlayer(id).name);
         }
     }
 
@@ -228,12 +230,12 @@ class Room {
         this.generalChat.push({msg: msg, sender: sender});
     }
 
-    sendDemonMessage(msg, targetName) {
-        const targetPlayer = this.getPlayerByName(targetName);
+    sendDemonMessage(msg, id) {
+        const targetPlayer = this.getPlayer(id);
         if (!targetPlayer) return;
-        this.emit(targetPlayer.id, "demon msg", msg);
-        this.emit(this.demonId, "demon msg", msg, targetName);
-        this.demonChats[targetName].push({msg: msg});
+        this.emit(id, "demon msg", msg);
+        this.emit(this.demonId, "demon msg", msg, id);
+        this.demonChats[id].push({msg: msg});
     }
 
     clearChats() {
@@ -245,7 +247,7 @@ class Room {
     }
 
     updatePlayer(id, settings) {
-        let player = this.getPlayerById(id);
+        let player = this.getPlayer(id);
         if (settings.color) player.color = this.getAvailableColor(settings.color);
         if (settings.avatarId) player.avatarId = settings.avatarId;
         this.updateTable();
@@ -290,10 +292,10 @@ class Room {
             }
             case constants.states.NIGHT: {
                 if (move.type !== constants.moves.SELECT) return result;
-                if (this.smudgedPlayer === move.targetName) return result;
-                let targetTablePlayer = this.getPlayerByName(move.targetName);
+                if (this.smudgedPlayer === move.targetId) return result;
+                let targetTablePlayer = this.getPlayer(move.targetId);
                 if (targetTablePlayer.isPurified) return result;
-                let success = this.possessPlayer(move.targetName, true);
+                let success = this.possessPlayer(move.targetId, true);
                 result.handled = success;
                 result.advance = success;
                 break;
@@ -337,7 +339,7 @@ class Room {
             handled: false,
             advance: false,
         };
-        let tablePlayer = this.getPlayerById(id);
+        let tablePlayer = this.getPlayer(id);
         switch (this.state) {
             case constants.states.LOBBY: {
                 if (move.type !== constants.moves.BEGIN) return result;
@@ -458,12 +460,14 @@ class Room {
                         return result;
                     } else {
                         if (this.saltLine.start === undefined || this.saltLine.end === undefined) return result;
+                        this.currentMove.targetId = undefined;
                         this.currentMove.targetName = "";
                     }
                 } else {
                     // Player cannot select themself.
-                    if (move.targetName === tablePlayer.name) return result;
-                    this.currentMove.targetName = move.targetName;
+                    if (id === move.targetId) return result;
+                    this.currentMove.targetId = move.targetId;
+                    this.currentMove.targetName = this.getPlayer(move.targetId).name;
                 }
                 result.handled = true;
                 result.advance = true;
@@ -578,7 +582,7 @@ class Room {
                     this.state = constants.states.DISPLAY;
                     this.message = `No player seconds ${this.currentMove.playerName}'s proposal`
                     this.broadcastMessage(`No player seconds <c>${this.currentMove.playerName}</c>'s proposal`);
-                    let tablePlayer = this.getPlayerById(this.currentMove.playerId);
+                    let tablePlayer = this.getPlayer(this.currentMove.playerId);
                     tablePlayer.move.success = false;
                     this.autoAdvanceState(FAILED_SECOND_DISPLAY_SEC);
                 }
@@ -602,7 +606,7 @@ class Room {
                     this.broadcastMessage(`The vote fails ${tallyStr}.`);
                     this.autoAdvanceState(FAILED_VOTE_DISPLAY_SEC);
                 }
-                this.getPlayerById(this.currentMove.playerId).move.success = success;
+                this.getPlayer(this.currentMove.playerId).move.success = success;
                 if (tally[true].length > 0) this.broadcastMessage(`Yes: ${tally[true].map(p => `<c>${p}</c>`).join(", ")}`);
                 if (tally[false].length > 0) this.broadcastMessage(`No: ${tally[false].map(p => `<c>${p}</c>`).join(", ")}`);
                 if (tally[undefined].length > 0) this.broadcastMessage(`Abstain: ${tally[undefined].map(p => `<c>${p}</c>`).join(", ")}`);
@@ -612,7 +616,7 @@ class Room {
             case constants.states.SELECT: {
                 this.state = constants.states.DISPLAY;
 
-                if (this.currentMove.targetName || (this.saltLine.start !== undefined && this.saltLine.end !== undefined)) {
+                if (this.currentMove.targetId || (this.saltLine.start !== undefined && this.saltLine.end !== undefined)) {
                     let target = this.currentMove.targetName ? ` ${this.currentMove.targetName}` : "";
                     this.message = `${this.currentMove.playerName} is ${ITEM_USE_MSG[this.currentMove.type]}${target}.`;
                     this.broadcastMessage(`<c>${this.currentMove.playerName}</c> is ${ITEM_USE_MSG[this.currentMove.type]}<c>${target}</c>.`);
@@ -620,8 +624,8 @@ class Room {
 
                     switch (this.currentMove.type) {
                         case constants.items.WATER:
-                            this.possessPlayer(this.currentMove.targetName, false);
-                            let targetTablePlayer = this.getPlayerByName(this.currentMove.targetName);
+                            this.possessPlayer(this.currentMove.targetId, false);
+                            let targetTablePlayer = this.getPlayer(this.currentMove.targetId);
                             targetTablePlayer.isPurified = this.settings.waterPurify;
                             break;
                         case constants.items.BOARD:
@@ -636,8 +640,8 @@ class Room {
                     let action = this.currentMove.type === constants.items.SALT ? "complete a line" : "select a target";
                     this.message = `${this.currentMove.playerName} failed to ${action} and forfeits their move.`;
                     this.broadcastMessage(`<c>${this.currentMove.playerName}</c> failed to ${action} and forfeits their move.`);
-                    let tablePlayer = this.getPlayerByName(this.currentMove.playerName);
-                    tablePlayer.move.success = false;
+                    let tablePlayer = this.getPlayer(this.currentMove.playerId);
+                    if (tablePlayer) tablePlayer.move.success = false;
                 }
                 if (this.state === constants.states.INTERFERE) {
                     this.autoAdvanceState(this.settings.times[constants.times.INTERFERE], true);
@@ -657,7 +661,7 @@ class Room {
 
                 switch (this.currentMove.type) {
                     case constants.items.BOARD: {
-                        var is = this.possessedPlayers.includes(this.currentMove.targetName);
+                        var is = this.possessedPlayers.includes(this.currentMove.targetId);
                         if (this.doInterfere) is = !is;
                         this.message = `The board reveals that ${this.currentMove.targetName} ${is ? "IS" : "IS NOT"} possessed`;
                         this.broadcastMessage(`The board reveals that <c>${this.currentMove.targetName}</c> <b>${is ? "IS" : "IS NOT"}</b> possessed`);
@@ -665,7 +669,7 @@ class Room {
                     }
                     case constants.items.ROD: {
                         this.state = constants.states.INTERPRET;
-                        let is = this.possessedPlayers.includes(this.currentMove.targetName);
+                        let is = this.possessedPlayers.includes(this.currentMove.targetId);
                         if (this.doInterfere) is = !is;
                         this.rodResult = is;
                         this.rodDisplay = undefined;
@@ -675,13 +679,13 @@ class Room {
                         break;
                     }
                     case constants.items.EXORCISM: {
-                        var is = this.possessedPlayers.includes(this.currentMove.targetName);
+                        var is = this.possessedPlayers.includes(this.currentMove.targetId);
                         if (this.doInterfere) is = !is;
                         this.message = `It appears that ${this.currentMove.targetName} ${is ? "IS" : "IS NOT"} possessed`;
                         this.broadcastMessage(`It appears that <c>${this.currentMove.targetName}</c> <b>${is ? "IS" : "IS NOT"}</b> possessed`);
-                        if (!this.doInterfere) this.possessPlayer(this.currentMove.targetName, false);
+                        if (!this.doInterfere) this.possessPlayer(this.currentMove.targetId, false);
 
-                        let targetTablePlayer = this.getPlayerByName(this.currentMove.targetName);
+                        let targetTablePlayer = this.getPlayer(this.currentMove.targetId);
                         targetTablePlayer.isExorcised = true;
                         if (!targetTablePlayer.move) targetTablePlayer.move = {type: constants.moves.PASS};
                         this.emit(targetTablePlayer.id, "pop up", "You are unconscious until tomorrow, do not speak!");
@@ -716,10 +720,10 @@ class Room {
                     }
                     case constants.items.SMUDGE: {
                         this.message = `${this.currentMove.targetName} has been warded against possession next round.`;
-                        this.getPlayerByName(this.currentMove.targetName).isSmudged = true;
-                        if (!(this.doInterfere || this.possessedPlayers.includes(this.currentMove.playerName))) {
-                            this.smudgedPlayer = this.currentMove.targetName;
-                            this.emit(this.demonId, "smudged player", this.currentMove.targetName);
+                        this.getPlayer(this.currentMove.targetId).isSmudged = true;
+                        if (!(this.doInterfere || this.possessedPlayers.includes(this.currentMove.playerId))) {
+                            this.smudgedPlayer = this.currentMove.targetId;
+                            this.emit(this.demonId, "smudged player", this.currentMove.targetId);
                         }
                         break;
                     }
@@ -785,14 +789,14 @@ class Room {
             this.message = PLAYER_WIN_MESSAGE;
             let winners = [];
             for (var tablePlayer of this.players) {
-                if (tablePlayer.isDemon) {
-                    tablePlayer.wasDemon = true;
-                    tablePlayer.isDemon = false;
-                }
-                if (tablePlayer.isDemon || this.damnedPlayers.includes(tablePlayer.name)) {
+                if (tablePlayer.isDemon || this.damnedPlayers.includes(tablePlayer.id)) {
                     tablePlayer.isDamned = true;
                 } else {
                     winners.push(tablePlayer.name);
+                }
+                if (tablePlayer.isDemon) {
+                    tablePlayer.wasDemon = true;
+                    tablePlayer.isDemon = false;
                 }
             }
             this.broadcastMessage(`The virtuous win: ${winners.map(p => `<c>${p}</c>`).join(", ")}!`);
@@ -813,13 +817,13 @@ class Room {
             this.message = DEMON_WIN_MESSAGE;
             let winners = [];
             for (var tablePlayer of this.players) {
-                if (tablePlayer.isDemon) {
-                    tablePlayer.wasDemon = true;
-                    tablePlayer.isDemon = false;
-                }
                 if (tablePlayer.isDemon || this.possessedPlayers.includes(tablePlayer.name)) {
                     tablePlayer.isDamned = true;
                     winners.push(tablePlayer.name);
+                }
+                if (tablePlayer.isDemon) {
+                    tablePlayer.wasDemon = true;
+                    tablePlayer.isDemon = false;
                 }
             }
             this.broadcastMessage(`The damned win: ${winners.map(p => `<c>${p}</c>`).join(", ")}!`);
@@ -946,19 +950,19 @@ class Room {
         };
     }
 
-    possessPlayer(targetName, doPossess) {
+    possessPlayer(id, doPossess) {
         if (doPossess) {
-            if (this.possessedPlayers.includes(targetName)) return false;
-            this.possessedPlayers.push(targetName);
-            this.demonChats[targetName] = [];
-            this.sendDemonMessage("You have been possessed!", targetName);
+            if (this.possessedPlayers.includes(id)) return false;
+            this.possessedPlayers.push(id);
+            this.demonChats[id] = [];
+            this.sendDemonMessage("You have been possessed!", id);
         } else {
-            if (!this.possessedPlayers.includes(targetName)) return false;
-            utils.removeByValue(this.possessedPlayers, targetName);
-            this.damnedPlayers.push(targetName);
+            if (!this.possessedPlayers.includes(id)) return false;
+            utils.removeByValue(this.possessedPlayers, id);
+            this.damnedPlayers.push(id);
         }
         this.emit(this.demonId, "possessed players", this.possessedPlayers);
-        this.emit(this.getPlayerByName(targetName).id, "possession", doPossess);
+        this.emit(id, "possession", doPossess);
         return true;
     }
 
@@ -1021,11 +1025,7 @@ class Room {
         return id === this.demonId;
     }
 
-    getPlayerByName(name) {
-        return this.players.find(p => p.name === name);
-    }
-
-    getPlayerById(id) {
+    getPlayer(id) {
         return this.players.find(p => p.id === id);
     }
 

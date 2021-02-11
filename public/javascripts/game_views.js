@@ -56,8 +56,9 @@ function drawDemonControlPanel() {
 		var dh = h - margin * 2;
 		if (i < possessedPlayers.length) {
 			if (!ALT && selectedPlayer === possessedPlayers[i]) drawRect("white", dx - margin, dy - margin, w, h);
-			drawRect(getPlayerByName(possessedPlayers[i]).color, dx, dy, dw, nameHeight);
-			drawText(possessedPlayers[i], dx + w / 2, dy + nameHeight * 0.75, 15, undefined, undefined, undefined, undefined, "black");
+			const tablePlayer = getPlayer(possessedPlayers[i]);
+			drawRect(tablePlayer.color, dx, dy, dw, nameHeight);
+			drawText(tablePlayer.name, dx + w / 2, dy + nameHeight * 0.75, 15, undefined, undefined, undefined, undefined, "black");
 		} else {
 			drawRect("#333333", dx, dy, dw, dh);
 			new ImageLabel(IMAGES[PENTAGRAM_GRAY]).setPosition(dx + dw * 0.5, dy + dh * 0.5).setDims(dw / 2).setCenter(true).draw();
@@ -76,7 +77,7 @@ function drawDemonControlPanel() {
 	var dy = 0.875;
 	for (var player of theTable.players) {
 		if (player.isDemon) continue;
-		buttons[`fast chat ${player.name}`].setPosition(dx, dy).setBackground(player.color).enable().draw();
+		buttons[`fast chat ${player.id}`].setPosition(dx, dy).setBackground(player.color).enable().draw();
 		if (dy === 0.925) {
 			dx += 0.05;
 			dy = 0.875;
@@ -104,7 +105,7 @@ function drawTable() {
 		} else {
 			msg = "Waiting for more players to join...";
 		}
-	} else if (gameState === constants.states.INTERPRET && thePlayer.name === theTable.currentMove.playerName) {
+	} else if (gameState === constants.states.INTERPRET && thePlayer.id === theTable.currentMove.playerId) {
 		msg = `The divining rod reveals that ${theTable.currentMove.targetName} ${rodResult ? "IS" : "IS NOT"} possessed.`;
 	}
 	drawText(msg, 0.3, 0.5, 20, "center", false, tableDims.width * 0.9);
@@ -170,7 +171,7 @@ function drawDemonSalt(xStart, yTop, yBot, padRad, margin) {
 	for (var i = 0; i < numPlayersAtTable(); i++) {
 		if (theTable.players[i].isDemon) continue;
 
-		groupRed[currGroup] |= possessedPlayers.includes(theTable.players[i].name);
+		groupRed[currGroup] |= possessedPlayers.includes(theTable.players[i].id);
 		if (saltIndex === theTable.saltLine.start || saltIndex === theTable.saltLine.end) {
 			currGroup = 1 - currGroup;
 			saltBreaks.push(saltIndex + 1);
@@ -244,7 +245,7 @@ function drawSaltLine(tempEnd) {
 function drawSalt() {
 	drawSaltLine();
 
-	if (theTable.currentMove.playerName !== thePlayer.name) return;
+	if (theTable.currentMove.playerId !== thePlayer.id) return;
 
 	var tableRad = labels["table_img"].dims().width / 2;
 	var tableX = labels["table_img"].x() + tableRad;
@@ -265,7 +266,7 @@ function drawSalt() {
 function drawPlayerPad(player, x, y, rad) {
 	// Draw pentagram under the player pad if player is possessed for player and demon.
 	var pent = IMAGES[PENTAGRAM_GRAY];
-	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.name)) || (thePlayer.name === player.name && thePlayerIsPossessed)) {
+	if (player.isDamned || (thePlayer.isDemon && possessedPlayers.includes(player.id)) || (thePlayer.id === player.id && thePlayerIsPossessed)) {
 		pent = IMAGES[PENTAGRAM];
 	}
 	if (player.wasDemon) pent = IMAGES[PENTAGRAM_RED];
@@ -273,26 +274,26 @@ function drawPlayerPad(player, x, y, rad) {
 	drawCircle(player.color, x, y, rad * 0.78);
 
 	// Move player avatar/button to position.
-	buttons[player.name].setPosition(x - rad * 0.25,  y - rad * 0.1);
-	buttons[player.name].width = rad * 1.5 / cvW;
-	buttons[player.name].on_img = PLAYER_IMAGES[player.avatarId];
+	buttons[player.id].setPosition(x - rad * 0.25,  y - rad * 0.1);
+	buttons[player.id].width = rad * 1.5 / cvW;
+	buttons[player.id].on_img = PLAYER_IMAGES[player.avatarId];
 	// Enable button for the demon, and for player selecting another player for a move.
-	buttons[player.name].enabled = (thePlayer.isDemon && !(possessedPlayers.includes(player.name) || player.name === smudgedPlayer || player.isPurified || player.wasPurified)) || (gameState === constants.states.SELECT && theTable.currentMove.playerName === thePlayer.name && player.name !== thePlayer.name);
-	buttons[player.name].visible = true;
-	buttons[player.name].draw();
+	buttons[player.id].enabled = (thePlayer.isDemon && !(possessedPlayers.includes(player.id) || player.id === smudgedPlayer || player.isPurified || player.wasPurified)) || (gameState === constants.states.SELECT && theTable.currentMove.playerId === thePlayer.id && player.id !== thePlayer.id);
+	buttons[player.id].visible = true;
+	buttons[player.id].draw();
 	
 	if (player.isExorcised) drawImage(IMAGES[constants.items.EXORCISM], x - rad * 0.25, y - rad * 0.2, false, rad * 0.8 / cvH, true, true);
 	if (player.isSmudged) drawImage(IMAGES[BURNING_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
 	if (player.wasSmudged && !player.isSmudged) drawImage(IMAGES[BURNED_SMUDGE], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
-	if (thePlayer.isDemon && player.isSmudged && player.name !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
+	if (thePlayer.isDemon && player.isSmudged && player.id !== smudgedPlayer) drawImage(IMAGES[FAIL_X], x - rad * 0.55, y + rad * 0.15, false, rad * 0.4 / cvH, true, true);
 	if (player.isPurified || player.wasPurified) drawImage(IMAGES[constants.items.WATER], x + rad * 0.1, y + rad * 0.15, false, rad * 0.5 / cvH, true, true);
 
 	// Draw name
 	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.6, rad * 1.6 / cvW, false, true, true);
 	drawText(player.active ? player.name : `< ${player.name} >`, x, y + rad * 0.7, 15, undefined, true, rad * 1.4, 5, player.active ? "black" : "gray");
 	// Draw start player and current player indicators
-	if (theTable.currentPlayer !== undefined && player.name === getCurrentPlayer().name) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
-	if (theTable.startPlayer !== undefined && player.name === theTable.players[theTable.startPlayer].name) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
+	if (theTable.currentPlayer !== undefined && player.id === getCurrentPlayer().id) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
+	if (theTable.startPlayer !== undefined && player.id === theTable.players[theTable.startPlayer].id) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
 
 	// Draw player's move
 	if (player.move) { 

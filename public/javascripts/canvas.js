@@ -154,13 +154,15 @@ function resizeElems() {
 	var w = 0.21;
 	var margin = 0.005;
 	var nameHeight = 0.04;
-	for (i = 0; i < demonChats.length; i++) {
+	let i = 0;
+	Object.values(demonChats).forEach(chat => {
 		var dx = x + (i % 3) * w + margin;
 		var dy = y + h * Math.floor(i / 3) + margin + nameHeight;
 		var dw = w - margin * 2;
 		var dh = h - margin * 2 - nameHeight;
-		demonChats[i].setPosition(dx, dy).setDims(dw, dh).resize();
-	}
+		chat.setPosition(dx, dy).setDims(dw, dh).resize();
+		i++;
+	});
 }
 
 function resizeCanvas(w, h) {

@@ -109,10 +109,10 @@ var drawGroups = [];
 var sounds = [];
 
 // Game state
-var gameState, theTable, playerId, thePlayer, thePlayerIsPossessed, rodResult;
+var gameState, theTable, playerId, thePlayerIds, thePlayer, thePlayerIsPossessed, rodResult;
 // Demon state
 var possessedPlayers, smudgedPlayer, interfereUses, selectedPlayer;
-var demonChats = [];
+var demonChats = {};
 var saltFlip = [false, false];
 
 // Display
@@ -153,15 +153,19 @@ socket.on("server error", function(msg) {
 });
 
 socket.on("chat msg", function(msg, sender) {
-	addMessage("player-chat", msg, sender);
+	console.log(`CHAT MSG: ${msg} ${sender}`);
+	if (sender) addPlayerChat(msg, sender);
+	else addMessage(elems["game-log"], msg);
 });
 
 socket.on("clear chat", function(chat) {
 	clearChat(chat);
 });
 
-socket.on("demon msg", function(msg, player) {
-	addMessage("demon-chat", msg, player);
+socket.on("demon msg", function(msg, id) {
+	console.log(`DEMON MSG: ${msg} ${id} ${thePlayer.isDemon}`);
+	if (thePlayer.isDemon) addDemonChat(msg, id);
+	else addMessage(elems["demon-chat"], msg);
 });
 
 socket.on("pop up", function(msg) {
@@ -190,23 +194,18 @@ socket.on("rod", function(isPossessed) {
 });
 
 socket.on("possessed players", function(players) {
-	while (players.length > demonChats.length) {
-		// New possessed player
-		var newChat = new DocumentElement("ul").setSize(10);
-		newChat.elem.className = "demon-chat";
-		newChat.show();
-		demonChats.push(newChat);
-	}
-	while (players.length < demonChats.length) {
-		// Player no longer possessed
-		for (var i = 0; i < possessedPlayers.length; i++) {
-			if (!players.includes(possessedPlayers[i])) {
-				demonChats[i].remove();
-				demonChats.splice(i, 1);
-				break;
-			}
+	Object.keys(demonChats).forEach(id => {
+		if (!players.includes(id)) {
+			demonChats[id].remove();
+			delete demonChats[id];
 		}
-	}
+	});
+	players.forEach(id => {
+		if (id in demonChats) return;
+		demonChats[id] = new DocumentElement("ul").setSize(10);
+		demonChats[id].elem.className = "demon-chat";
+		demonChats[id].show();
+	});
 	possessedPlayers = players;
 	if (!possessedPlayers.includes(selectedPlayer)) selectedPlayer = possessedPlayers[0];
 	handleResize();
@@ -461,7 +460,7 @@ function initLabels() {
 
 function disableInputs() {
 	setElemDisplay();
-	for (var c of demonChats) c.hide();
+	Object.values(demonChats).forEach(c => c.hide());
 }
 
 function setElemDisplay(inputs = []) {
@@ -490,7 +489,7 @@ function enableInputs() {
 			}
 			setElemDisplay(inputs);
 			drawGroups["chat"].enable();
-			if (thePlayer.isDemon) for (var c of demonChats) c.show();
+			if (thePlayer.isDemon) Object.values(demonChats).forEach(c => c.show());
 			break;
 		}
 	}
@@ -596,33 +595,32 @@ function setChatHeight() {
 
 ////////// Chat logic \\\\\\\\\\\\
 
-var lastPlayer = undefined;
+var lastSender = undefined;
 var chatBgnd = false;
-function addMessage(chat, msg, player) {
+function addPlayerChat(msg, senderName) {
 	// Handle simple text messages;
-	var item = document.createElement("li");
-	var messages = elems[chat];
-
-	if (chat === "player-chat") {
-		if (player) {
-			if (player !== lastPlayer) chatBgnd = !chatBgnd;
-			lastPlayer = player;
-			if (chatBgnd) item.style.background = "#575757";
-			if (player === thePlayer.name) {
-				item.style.textAlign = "right";
-			} else {
-				addMarkedUpContent(item, `<c>${player}</c>: `);
-			}
-		} else {
-			messages = elems["game-log"];
-		}
-	} else if (thePlayer.isDemon) {
-		var chatIdx = possessedPlayers.indexOf(player);
-		if (chatIdx === -1) return;
-		messages = demonChats[chatIdx];
+	let item = document.createElement("li");
+	if (senderName !== lastSender) chatBgnd = !chatBgnd;
+	lastSender = senderName;
+	if (chatBgnd) item.style.background = "#575757";
+	if (senderName === thePlayer.name) {
+		item.style.textAlign = "right";
+	} else {
+		addMarkedUpContent(item, `<c>${senderName}</c>: `);
 	}
+	addMessage(elems["player-chat"], msg, item);
+}
+
+function addDemonChat(msg, id) {
+	const chat = demonChats[id];
+	if (!chat) return;
+	addMessage(demonChats[id], msg);
+}
+
+function addMessage(container, msg, item) {
+	item = item || document.createElement("li");
 	addMarkedUpContent(item, msg);
-	messages.appendChild(item);
+	container.appendChild(item);
 	item.scrollIntoView();
 }
 
@@ -644,7 +642,7 @@ function addMarkedUpContent(item, content) {
 		if (tag.startsWith("/")) {
 			switch (tag.substring(1).toLowerCase()) {
 				case "c":
-					var player = getPlayerByName(lastText.trim());
+					var player = getPlayerByName(lastText);
 					if (player) stack[stack.length - 1].style.color = player.color;
 					break;
 				case "b": 
@@ -672,14 +670,13 @@ function clearChat(chat) {
 }
 
 function removeDemonChats() {
-	demonChats.forEach(c => c.remove());
-	demonChats = [];
+	Object.values(demonChats).forEach(chat => chat.remove());
+	demonChats = {};
 }
 
 /////////// Game logic \\\\\\\\\\\\
 
 function changeState(state) {
-	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (state === gameState) return;
 
 	for (var button of Object.values(buttons)) button.disable();
@@ -696,6 +693,7 @@ function changeState(state) {
 			break;
 		case constants.states.MAIN_MENU:
 			overlay = undefined;
+			thePlayerIds = [];
 			drawGroups["main menu"].enable();
 			labels["error msg"].text = "";
 			clearChats();
@@ -740,7 +738,7 @@ function changeState(state) {
 			}
 			break;
 		case constants.states.INTERPRET:
-			if (thePlayer.name === theTable.currentMove.playerName) drawGroups["rod"].enable();
+			if (thePlayer.id === theTable.currentMove.playerId) drawGroups["rod"].enable();
 			break;
 		case constants.states.INTERFERE:
 			if (thePlayer.isDemon && interfereUses[theTable.currentMove.type] > 0) drawGroups[`${theTable.currentMove.type === constants.items.SALT ? "salt " : ""}interfere`].enable();
@@ -858,18 +856,18 @@ function updateSalt(pos) {
 	socket.emit("do move", {type: constants.moves.SELECT, line: theTable.saltLine});
 }
 
-function selectPlayer(name) {
+function selectPlayer(id) {
 	if (thePlayer.isDemon) {
 		if (gameState === constants.states.NIGHT) {
-			socket.emit("do move", {type: constants.moves.SELECT, targetName: name});
+			socket.emit("do move", {type: constants.moves.SELECT, targetId: id});
 		} else {
-			if (possessedPlayers.includes(name)) {
-				selectedPlayer = name;
+			if (possessedPlayers.includes(id)) {
+				selectedPlayer = id;
 			}
 		}
 	} else {
 		if (gameState === constants.states.SELECT) {
-			socket.emit("do move", {type: constants.moves.SELECT, targetName: name});
+			socket.emit("do move", {type: constants.moves.SELECT, targetId: id});
 		}
 	}
 }
@@ -921,70 +919,81 @@ function fastChat(msg) {
 }
 
 function makeTable() {
-	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (!socket.connected) raiseError("No connection to server");
 
-	console.log(newTableSettings);
-	const playerSettings = {
-		name: elems["player-name"].elem.value,
-		avatarId: parseInt(Cookies("avatarId")),
-		color: Cookies("color"),
+	const name = elems["player-name"].elem.value.trim();
+	if (!name) raiseError("Must provide name to create table");
+	else {
+		const playerSettings = {
+			name: name,
+			avatarId: parseInt(Cookies("avatarId")),
+			color: Cookies("color"),
+		}
+		Cookies.set("name", name);
+		socket.emit("make table", newTableSettings, playerSettings);
 	}
-	if (!playerSettings.name) raiseError("Must provide name to make table!");
-
-	Cookies.set("name", playerSettings.name);
-	socket.emit("make table", newTableSettings, playerSettings);
 }
 
 function joinTable() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (!socket.connected) raiseError("No connection to server");
 
-	const code = elems["game-code"].elem.value;
-	const playerSettings = {
-		name: elems["player-name"].elem.value,
-		avatarId: parseInt(Cookies("avatarId")),
-		color: Cookies("color"),
+	const name = elems["player-name"].elem.value.trim();
+	const code = elems["game-code"].elem.value.trim();
+	if (!name) raiseError("Must provide name and table code to join table");
+	else if (!code) raiseError("Must provide name and table code to join table");
+	else {
+		const playerSettings = {
+			name: name,
+			avatarId: parseInt(Cookies("avatarId")),
+			color: Cookies("color"),
+		}
+		Cookies.set("name", name);
+		socket.emit("join table", code, playerSettings);
 	}
-	if (!playerSettings.name || !code) raiseError("Must provide name and table code to join table!");
-
-	Cookies.set("name", playerSettings.name);
-	socket.emit("join table", code, playerSettings);
 }
 
 function updateTable(table) {
-	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
-	if (table) {
-		for (var player of table.players) {
-			console.log(`Checking player id: ${player.id} ${playerId}`);
-			// Store local player in global var
-			if (player.id === playerId) thePlayer = player;
-			// Make button avatars for players if they don't exist
-			if (!buttons[player.name]) {
-				buttons[player.name] = new ImageButton(PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.name)).setCenter(true).setAbsolute(true);
-				var fastButton = new Button(player.name, 10, fastChat.bind(null, `<c>${player.name}</c>`)).setDims(0.045, 0.04);
-				if (fastButton.textDims().width > fastButton.buttonDims().width * 0.75) {
-					fastButton.text = player.name.substring(0, Math.floor(player.name.length * fastButton.buttonDims().width * 0.75 / fastButton.textDims().width));
-				}
-				buttons[`fast chat ${player.name}`] = fastButton;
-				// TODO: remove deleted players...
-			}
-		}
-
-		var change = !theTable || gameState != table.state;
-		theTable = table;
-		labels["round timer title"].text = `Round ${table.round}`;
-		if (change) {
-			changeState(table.state);
-			setChatHeight();
-			enableInputs();
-		}
-		if (!buttons["table code"].hideCode) buttons["table code"].text = `Table ${theTable.code}`;
-	} else {
+	if (!table) {
 		theTable = undefined;
 		changeState(constants.states.MAIN_MENU);
 		buttons["table code"].text = "Table ????";
+		return;
 	}
+
+	// Update players
+	// TODO: replace with per player updates?
+	const latestPlayerIds = [];
+	table.players.forEach(player => {
+		latestPlayerIds.push(player.id);
+		if (player.id === playerId) thePlayer = player;
+		if (thePlayerIds.includes(player.id)) return;
+		// Make button avatars for players if they don't exist
+		buttons[`${player.id}`] = new ImageButton(PLAYER_IMAGES[player.avatarId], selectPlayer.bind(null, player.id)).setCenter(true).setAbsolute(true);
+		var fastButton = new Button(player.name, 10, fastChat.bind(null, `<c>${player.name}</c>`)).setDims(0.045, 0.04);
+		if (fastButton.textDims().width > fastButton.buttonDims().width * 0.75) {
+			fastButton.text = player.name.substring(0, Math.floor(player.name.length * fastButton.buttonDims().width * 0.75 / fastButton.textDims().width));
+		}
+		buttons[`fast chat ${player.id}`] = fastButton;
+	});
+	const removedPlayerIds = thePlayerIds.filter(id => !latestPlayerIds.includes(id));
+	thePlayerIds = latestPlayerIds;
+	removedPlayerIds.forEach(id => {
+		delete buttons[`${id}`];
+		delete buttons[`fast chat ${id}`];
+	});
+	console.log(`TABLE UPDATED!!! ${thePlayer.isDemon}`);
+
+	// Update state.
+	var change = !theTable || gameState != table.state;
+	theTable = table;
+	labels["round timer title"].text = `Round ${table.round}`;
+	if (change) {
+		changeState(table.state);
+		setChatHeight();
+		enableInputs();
+	}
+	if (!buttons["table code"].hideCode) buttons["table code"].text = `Table ${theTable.code}`;
 }
 
 function leaveTable() {
