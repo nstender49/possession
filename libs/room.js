@@ -1,3 +1,4 @@
+const e = require("express");
 var constants = require("../public/shared/constants");
 var utils = require("../public/shared/utils");
 
@@ -90,27 +91,34 @@ class Room {
             socket.emit("server error", `Table ${this.code} full!`);
             return false;
         }
-        if (this.state !== constants.states.LOBBY) {
-            socket.emit("server error", `Table ${this.code} game in progress!`);
+        let existing = this.players.find(p => p.name.toLowerCase().trim() === settings.name.toLowerCase().trim());
+        if (existing && existing.active) {
+            socket.emit("server error", `Player with name '${settings.name}' already exists at table ${this.code}`);
             return false;
         }
-        if (this.players.find(p => p.name.toLowerCase().trim() === settings.name.toLowerCase().trim())) {
-            socket.emit("server error", `Player with name '${settings.name}' already exists at table ${this.code}`);
+        if (!existing && this.state !== constants.states.LOBBY) {
+            socket.emit("server error", `Table ${this.code} game in progress!`);
             return false;
         }
 
         this.sockets[id] = socket;
         socket.join(this.code);
-        this.players.push({
-            name: settings.name,
-            color: this.getAvailableColor(settings.color),
-            avatarId: (settings.avatarId || settings.avatarId === 0) ? settings.avatarId : Math.floor(Math.random() * constants.AVATAR_COUNT),
-            id: id,
-            active: true,
-            isDemon: false,
-            move: undefined,
-            voted: false,
-        });
+
+        if (existing) {
+            existing.active = true;
+            existing.id = id;
+        } else {
+            this.players.push({
+                name: settings.name,
+                color: this.getAvailableColor(settings.color),
+                avatarId: (settings.avatarId || settings.avatarId === 0) ? settings.avatarId : Math.floor(Math.random() * constants.AVATAR_COUNT),
+                id: id,
+                active: true,
+                isDemon: false,
+                move: undefined,
+                voted: false,
+            });
+        }
 
         this.updateTable();
         this.generalChat.map(l => socket.emit("chat msg", l.msg, l.sender));
@@ -129,30 +137,37 @@ class Room {
     }
 
     markPlayerActive(socket, id) {
+        // Get player to restore. This may fail if player was replaced or booted.
         const tablePlayer = this.getPlayerById(id);
-        if (!tablePlayer) return;
+        if (!tablePlayer) return false;
         tablePlayer.active = true;
         this.sockets[id] = socket;
-        this.updateTable();
+        socket.join(this.code);
 
+        // Update private state
         if (tablePlayer.isDemon) {
             this.emit(id, "possessed players", this.possessedPlayers);
-            this.emit(id, "update interfere", game.interfereUses);
-            this.emit(id, "smudged player", game.smudgedPlayer);
-            for (const [name, log] in this.demonChats) log.map(l => this.emit(id, "demon msg", l.msg, name));
+            this.emit(id, "update interfere", this.interfereUses);
+            this.emit(id, "smudged player", this.smudgedPlayer);
         }
         if (this.possessedPlayers.includes(tablePlayer.name)) {
             this.emit(id, "possession", true);
-            this.demonChats[tablePlayer.name].map(l => this.emit(id, "demon msg", l.msg));
         }
+        // Update public state
         this.updateTable();
+        // Update chats
         this.generalChat.map(l => this.emit(id, "chat msg", l.msg, l.sender));
+        if (tablePlayer.isDemon) for (const name in this.demonChats) this.demonChats[name].map(l => this.emit(id, "demon msg", l.msg, name));
+        if (this.possessedPlayers.includes(tablePlayer.name)) this.demonChats[tablePlayer.name].map(l => this.emit(id, "demon msg", l.msg));
+
+        return true;
     }
 
     markPlayerInactive(id) {
         const tablePlayer = this.getPlayerById(id);
         if (!tablePlayer) return;
         tablePlayer.active = false;
+        this.sockets[id].leave(this.code);
         delete this.sockets[id];
         this.updateTable();
     }
@@ -563,7 +578,7 @@ class Room {
                     this.state = constants.states.DISPLAY;
                     this.message = `No player seconds ${this.currentMove.playerName}'s proposal`
                     this.broadcastMessage(`No player seconds <c>${this.currentMove.playerName}</c>'s proposal`);
-                    let tablePlayer = this.getPlayerById(this.currentMove.playerId, table);
+                    let tablePlayer = this.getPlayerById(this.currentMove.playerId);
                     tablePlayer.move.success = false;
                     this.autoAdvanceState(FAILED_SECOND_DISPLAY_SEC);
                 }
@@ -573,7 +588,7 @@ class Room {
             // Move to player select or back to day
             case constants.states.VOTING: {
                 const tally = this.tallyVotes(true);
-                const success = tally[true] > tally[false];
+                const success = tally[true].length >= tally[false].length;
                 const tallyStr = `${tally[true].length}-${tally[false].length}-${tally[undefined].length}`;
                 if (success) {
                     this.state = constants.states.SELECT;
@@ -588,9 +603,9 @@ class Room {
                     this.autoAdvanceState(FAILED_VOTE_DISPLAY_SEC);
                 }
                 this.getPlayerById(this.currentMove.playerId).move.success = success;
-                if (tally[true].length > 0) this.broadcastMessage(`    Yes: ${tally[true].map(p => `<c>${p}</c>`).join(", ")}`);
-                if (tally[false].length > 0) this.broadcastMessage(`    No: ${tally[false].map(p => `<c>${p}</c>`).join(", ")}`);
-                if (tally[undefined].length > 0) this.broadcastMessage(`    Abstain: ${tally[undefined].map(p => `<c>${p}</c>`).join(", ")}`);
+                if (tally[true].length > 0) this.broadcastMessage(`Yes: ${tally[true].map(p => `<c>${p}</c>`).join(", ")}`);
+                if (tally[false].length > 0) this.broadcastMessage(`No: ${tally[false].map(p => `<c>${p}</c>`).join(", ")}`);
+                if (tally[undefined].length > 0) this.broadcastMessage(`Abstain: ${tally[undefined].map(p => `<c>${p}</c>`).join(", ")}`);
                 break;
             }
             // Move to display result

@@ -11,6 +11,7 @@ app.use(session({
 	cookie: {
 		sameSite: true,
 		// secure: true,  NOTE: enable this once https is enabled, need hobby level heroku
+		maxAge: 24 * 60 * 60 * 1000,
 	},
 }));
 

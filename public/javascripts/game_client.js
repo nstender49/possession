@@ -176,6 +176,12 @@ socket.on("accept demon", function() {
 
 socket.on("possession", function(isPossessed) {
 	thePlayerIsPossessed = isPossessed;
+	if (thePlayerIsPossessed) {
+		buttons["demon-chat"].enable();
+		elems["demon-chat"].show();
+	} else {
+		buttons["demon-chat"].disable();
+	}
 	setChatHeight();
 });
 
@@ -188,6 +194,7 @@ socket.on("possessed players", function(players) {
 		// New possessed player
 		var newChat = new DocumentElement("ul").setSize(10);
 		newChat.elem.className = "demon-chat";
+		newChat.show();
 		demonChats.push(newChat);
 	}
 	while (players.length < demonChats.length) {
@@ -448,10 +455,6 @@ function initLabels() {
 		buttons["submit salt"],
 		buttons["clear salt"],
 	]);
-
-	// Debug element
-	elems["sessionId"] = new DocumentElement("input", "sessionId").setPosition(0.005, 0.9).setDims(0.07, 0.04).setSize(10);
-	elems["sessionId"].elem.value = Cookies("session");
 }
 
 ////////// Input elements \\\\\\\\\\
@@ -479,10 +482,14 @@ function enableInputs() {
 		}
 		default: {
 			let inputs = ["chat-input", "game-log", "player-chat"];
-			if (thePlayerIsPossessed) inputs.push("demon-chat");
+			if (thePlayerIsPossessed) {
+				buttons["demon-chat"].enable();
+				inputs.push("demon-chat");
+			} else {
+				buttons["demon-chat"].disable();
+			}
 			setElemDisplay(inputs);
 			drawGroups["chat"].enable();
-			if (!thePlayerIsPossessed) buttons["demon-chat"].disable();
 			if (thePlayer.isDemon) for (var c of demonChats) c.show();
 			break;
 		}
@@ -536,13 +543,14 @@ function setChatHeight() {
 		const CHAT_HEIGHT = CHAT_BOT - CHAT_TOP;
 		const DIV_HEIGHT = 0.025;
 
+		if (buttons["demon-chat"].xx !== CHAT_X) buttons["demon-chat"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
+
 		// Transitioning from demon to human
 		if (buttons["game-log"].xx !== CHAT_X) {
 			for (var name of ["game-log", "player-chat", "demon-chat"]) {
 				buttons[name].setDims(CHAT_W, DIV_HEIGHT);
 			}
 
-			buttons["demon-chat"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
 			buttons["game-log"].setPosition(CHAT_X, CHAT_TOP).setFixed(true);
 			buttons["player-chat"].setPosition(CHAT_X, CHAT_TOP + CHAT_HEIGHT * 0.5);
 
@@ -684,21 +692,19 @@ function changeState(state) {
 			howtoPage = 0;
 			drawGroups["timers"].disable();
 			drawGroups["main menu"].disable().show();
-			removeDemonChats();
+			clearChats();
 			break;
 		case constants.states.MAIN_MENU:
 			overlay = undefined;
-			removeDemonChats();
 			drawGroups["main menu"].enable();
 			labels["error msg"].text = "";
-			clearChat("demon-chat");
-			clearChat("game-log");
+			clearChats();
 			break;
 		case constants.states.LOBBY:
 			overlay = undefined;
 			thePlayerIsPossessed = false;
 			possessedPlayers = [];
-			removeDemonChats();
+			clearChats();
 			drawGroups["table lobby"].enable();
 			break;
 		case constants.states.DEMON_SELECTION:
@@ -950,6 +956,7 @@ function updateTable(table) {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	if (table) {
 		for (var player of table.players) {
+			console.log(`Checking player id: ${player.id} ${playerId}`);
 			// Store local player in global var
 			if (player.id === playerId) thePlayer = player;
 			// Make button avatars for players if they don't exist
@@ -988,8 +995,13 @@ function leaveTable() {
 function handleServerDisconnect() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	raiseError("Server disconnected!");
-	theTable = false;
 	changeState(constants.states.INIT);
+	theTable = undefined;
+}
+
+function clearChats() {
+	["game-log", "player-chat", "demon-chat"].forEach(chat => clearChat(chat));
+	removeDemonChats();
 }
 
 /////////// Utilities \\\\\\\\\
@@ -1066,7 +1078,7 @@ function raiseError(msg) {
 }
 
 function fadeLabel(label, start) {
-	console.log(`IN FADE LABEL ${labels[label].opacity} ${start}`)
+	//console.log(`IN FADE LABEL ${labels[label].opacity} ${start}`)
 	if (start) {
 		labels[label].opacity = 100;
 		labels[label].visible = true;
@@ -1074,11 +1086,11 @@ function fadeLabel(label, start) {
 		labels[label].opacity -= 1;
 	}
 	if (labels[label].opacity > 0) {
-		console.log(`\tCALLING AGAIN`);
+		//console.log(`\tCALLING AGAIN`);
 		setTimeout(fadeLabel.bind(null, "error msg", false), ERROR_DURATION_SEC * 10);
 	} else {
 		labels[label].opacity = 0;
-		console.log(`\tTHAT's ALL FOLKS!`);
+		//console.log(`\tTHAT's ALL FOLKS!`);
 		labels[label].visible = false;
 	}
 }

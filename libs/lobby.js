@@ -43,27 +43,44 @@ class Lobby {
 
     addPlayer(socket) {
         const sessionId = this.debug ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
-
-        let id = this.sessionToId[sessionId] || v4();
-        socket.emit("player id", id);
-        socket.emit("clear state");
-        this.socketToId[socket.id] = id;
-        this.sessionToId[sessionId] = id;
-
-        const player = this.players[id];
-        if (player) {
+    
+        let id = this.sessionToId[sessionId];
+        console.log(`SESSION: ${sessionId}  - ID: ${id}`);
+        if (id) {
+            // Got and existing session
+            const player = this.players[id];
             if (player.active) {
                 socket.emit("server error", "Found existing session in another tab");
             } else {
+                socket.emit("player id", id);
+                this.socketToId[socket.id] = id;
+                this.sessionToId[sessionId] = id;
                 player.active = true;
+
+                // If room exists, restore player
                 const room = this.rooms[player.roomCode];
-                if (room) room.markPlayerActive(socket, id);
+                if (room) {
+                    if (!room.markPlayerActive(socket, id)) {
+                        socket.emit("clear state");
+                        socket.emit("server error", `Unable to rejoin ${player.roomCode}!`);
+                        // Player was not successfully added back to room, reset.
+                        player.roomCode = undefined;
+                    }
+                } else {
+                    socket.emit("clear state");
+                }
             }
         } else {
+            // New session
+            id = v4();
             this.players[id] = {
                 gameCode: undefined,
                 active: true,
             };
+            socket.emit("player id", id);
+            socket.emit("clear state");
+            this.socketToId[socket.id] = id;
+            this.sessionToId[sessionId] = id;
         }
     }
 
@@ -121,7 +138,7 @@ class Lobby {
     getContext(socket) {
         const id = this.socketToId[socket.id];
         const player = this.players[id];
-        const room = player.roomCode ? this.rooms[player.roomCode] : undefined;
+        const room = player && player.roomCode ? this.rooms[player.roomCode] : undefined;
         return {
             id: id,
             player: player,
