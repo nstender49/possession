@@ -3,10 +3,10 @@
   "description": "The Demonic Social Deception Game",
   "author": "Nathan Stender",
   "version": "0.0.3",
-  "main": "server.js",
+  "main": "server.mjs",
   "scripts": {
-    "start": "NODE_ENV=production node server.js",
-    "debug": "node server.js",
+    "start": "NODE_ENV=production node server.mjs",
+    "debug": "node server.mjs",
     "test": "mocha"
   },
   "dependencies": {
@@ -21,7 +21,7 @@
     "pg-hstore": "^2.3.3",
     "sequelize": "^6.5.0",
     "sequelize-cli": "^6.2.0",
-    "socket.io": "^1.4.4",
+    "socket.io": "^3.1.1",
     "timesync": "^1.0.8",
     "uuid": "^8.3.2"
   }

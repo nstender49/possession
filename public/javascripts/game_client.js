@@ -140,7 +140,7 @@ socket.on("player id", function(id) {
 	playerId = id;
 });
 
-socket.on("clear state", function() {
+socket.on("connect", function() {
 	updateTable();
 });
 
@@ -227,7 +227,7 @@ socket.on("update interfere", function(uses) {
 
 socket.on("init settings", function(settings) {
 	labels["version"].text = settings.code_version ? `v${settings.code_version}` : "local";
-	DEBUG = settings.DEBUG;
+	if (settings.DEBUG !== undefined) DEBUG = settings.DEBUG;
 	if (DEBUG) {
 		newTableSettings.minPlayers = 3;
 		elems["player-name"].elem.value = "Player" + Math.floor(Math.random() * 100);
@@ -1004,6 +1004,7 @@ function leaveTable() {
 function handleServerDisconnect() {
 	if (logFull) console.log("%s(%s)", arguments.callee.name, Array.prototype.slice.call(arguments).sort());
 	raiseError("Server disconnected!");
+	// TODO: once db backup is added, remove this, disable buttons.
 	changeState(constants.states.INIT);
 	theTable = undefined;
 }

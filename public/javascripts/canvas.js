@@ -5,6 +5,7 @@ function init() {
 
 	document.body.style.backgroundColor = BACKGROUND_COLOR;
 
+	thePlayerIds = [];
 	initLabels();
 	changeState(constants.states.INIT);
 	handleResize();
@@ -176,7 +177,7 @@ function resizeCanvas(w, h) {
 
 //////////  Drawing  \\\\\\\\\\
 
-function tick() {
+function tick() {	
 	if (IMAGES[BACK].loaded) {
 		ctx.drawImage(IMAGES[BACK].img, 0, 0, window.innerWidth, window.innerHeight);
 	} else {

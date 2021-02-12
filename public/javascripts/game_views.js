@@ -292,8 +292,8 @@ function drawPlayerPad(player, x, y, rad) {
 	drawImage(IMAGES[NAMEPLATE], x, y + rad * 0.6, rad * 1.6 / cvW, false, true, true);
 	drawText(player.active ? player.name : `< ${player.name} >`, x, y + rad * 0.7, 15, undefined, true, rad * 1.4, 5, player.active ? "black" : "gray");
 	// Draw start player and current player indicators
-	if (theTable.currentPlayer !== undefined && player.id === getCurrentPlayer().id) drawCircle("green", x - rad * 0.8, y + rad * 0.5, r * 3);
-	if (theTable.startPlayer !== undefined && player.id === theTable.players[theTable.startPlayer].id) drawCircle("blue", x - rad * 0.8, y + rad * 0.9, r * 3);
+	if (theTable.currentPlayer !== undefined && player.id === getCurrentPlayer().id) drawCircle("green", x - rad * 0.68, y + rad * 0.47, r * 3);
+	if (theTable.startPlayer !== undefined && player.id === theTable.players[theTable.startPlayer].id) drawCircle("blue", x - rad * 0.68, y + rad * 0.75, r * 3);
 
 	// Draw player's move
 	if (player.move) { 

@@ -1,9 +1,12 @@
-// This file starts the both the Express server, used to serve the actual webpage,
-// and the Socket.io server, used to handle the the realtime connection to the client.
+var ENV = process.env.NODE_ENV || "dev";
+var DEBUG = ENV === "dev";
 
 var express = require("express");
 var session = require("express-session");
+var socketio = require("socket.io");
 var timesyncServer = require("timesync/server");
+
+const Lobby = require("./libs/lobby");
 
 var app = express();
 app.use(session({
@@ -16,7 +19,9 @@ app.use(session({
 }));
 
 var server = require("http").Server(app);
-var io = require("./libs/game_manager").listen(server);  // Start Socket.io server and let game_manager handle those connections
+var io = socketio(server);
+var lobby = new Lobby(io);
+lobby.listen();
 
 app.set("port", (process.env.PORT || 3001));  // Use either given port or 3001 as default
 app.use(express.static("public"));  // Staticly serve pages, using directory 'public' as root 

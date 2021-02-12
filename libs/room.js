@@ -1,4 +1,6 @@
-const e = require("express");
+var ENV = process.env.NODE_ENV || "dev";
+var DEBUG = ENV === "dev";
+
 var constants = require("../public/shared/constants");
 var utils = require("../public/shared/utils");
 
@@ -39,6 +41,15 @@ class Room {
         this.io = io;
         this.code = code;
         this.sockets = {};
+        this.socketToId = {};
+
+        this.eventHandlers = {
+            "leave table": this.leaveTable,
+            "do move": this.handleMove,
+            "chat msg": this.sendMessage,
+            "update settings": this.updateSettings,
+            "update player settings": this.updatePlayer,
+        };
 
         // Public data
         this.state = constants.states.LOBBY;
@@ -86,92 +97,158 @@ class Room {
         this.demonChats = {};
     }
 
-    addPlayer(socket, id, settings) {
-        if (this.players.length >= this.settings.maxPlayers) {
-            socket.emit("server error", `Table ${this.code} full!`);
+    static makeCode() {
+        //const charset = DEBUG ? String.fromCharCode('A'.charCodeAt() + Object.keys(this.rooms).length) : "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
+        const charset = DEBUG ? "A" : "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
+        const codeLen = 4;
+        let code = "";
+        for (var i = 0; i < codeLen; i++) {
+            code += charset.charAt(Math.floor(Math.random() * charset.length));
+        }
+        return code;
+    }
+
+    static validatePlayer(socket, settings) {
+        if (!settings) {
+            socket.emit("server error", "Must provide player settings!");
             return false;
         }
+        if (!settings.name) {
+            socket.emit("server error", "Must provide player name!");
+            return false;
+        }
+        if (!settings.name.match("^[\\d\\w\\s!]+$")) {
+            socket.emit("server error", `Invalid name: '${settings.name.trim()}', alphanumeric only!`);
+            return false;
+        }
+        return true;
+    }
+
+    addPlayer(socket, id, settings) {
+        let player = this.getPlayer(id);
+        if (!player) return this.addNewPlayer(socket, id, settings);
+        else this.markPlayerActive(socket, player);
+        return true;
+    }
+
+    addNewPlayer(socket, id, settings) {
+        // Allow new player to replace existing, inactive player.
         let existing = this.players.find(p => p.name.toLowerCase().trim() === settings.name.toLowerCase().trim());
         if (existing && existing.active) {
             socket.emit("server error", `Player with name '${settings.name}' already exists at table ${this.code}`);
             return false;
         }
-        if (!existing && this.state !== constants.states.LOBBY) {
+        if (existing) {
+            // Need to replace any inflight id references here.
+            if (this.currentMove && this.currentMove.playerId === existing.id) this.currentMove.playerId = id;
+            if (this.demonCandidate === existing.id) this.demonCandidate = id;
+            this.markPlayerActive(socket, existing);
+            return true;
+        }
+
+        // Otherwise, this is a truly new player.
+        if (this.players.length >= this.settings.maxPlayers) {
+            socket.emit("server error", `Table ${this.code} full!`);
+            return false;
+        }
+        if (this.state !== constants.states.LOBBY) {
             socket.emit("server error", `Table ${this.code} game in progress!`);
             return false;
         }
-
-        this.sockets[id] = socket;
-        socket.join(this.code);
-
-        if (existing) {
-            existing.active = true;
-            if (this.currentMove.playerId === existing.id) this.currentMove.playerId = id;
-            if (this.demonCandidate === existing.id) this.demonCandidate = id;
-            existing.id = id;
-        } else {
-            this.players.push({
-                name: settings.name,
-                color: this.getAvailableColor(settings.color),
-                avatarId: (settings.avatarId || settings.avatarId === 0) ? settings.avatarId : Math.floor(Math.random() * constants.AVATAR_COUNT),
-                id: id,
-                active: true,
-                isDemon: false,
-                move: undefined,
-                voted: false,
-            });
-        }
-
+        
+        this.addSocket(socket, id);
+        this.players.push({
+            name: settings.name,
+            color: this.getAvailableColor(settings.color),
+            avatarId: (settings.avatarId || settings.avatarId === 0) ? settings.avatarId : Math.floor(Math.random() * constants.AVATAR_COUNT),
+            id: id,
+            active: true,
+            isDemon: false,
+            move: undefined,
+            voted: false,
+        });
         this.updateTable();
         this.generalChat.map(l => socket.emit("chat msg", l.msg, l.sender));
         return true;
     }
 
-    removePlayer(socket, id) {
-        if (this.state !== constants.states.LOBBY) {
-            socket.emit("server error", "Can not leave table while a game is in progress!");
-            return;
-        }
-        socket.leave(this.code);
-        socket.emit("clear state");
-        utils.removeByValue(this.players, this.players.find(p => p.id === id));
-        this.updateTable();
-    }
-
-    markPlayerActive(socket, id) {
-        // Get player to restore. This may fail if player was replaced or booted.
-        const tablePlayer = this.getPlayer(id);
-        if (!tablePlayer) return false;
-        tablePlayer.active = true;
-        this.sockets[id] = socket;
-        socket.join(this.code);
+    markPlayerActive(socket, player) {
+        player.active = true;
+        this.addSocket(socket, player.id);
 
         // Update private state
-        if (tablePlayer.isDemon) {
-            this.emit(id, "possessed players", this.possessedPlayers);
-            this.emit(id, "update interfere", this.interfereUses);
-            this.emit(id, "smudged player", this.smudgedPlayer);
+        if (player.isDemon) {
+            this.emit(player.id, "possessed players", this.possessedPlayers);
+            this.emit(player.id, "update interfere", this.interfereUses);
+            this.emit(player.id, "smudged player", this.smudgedPlayer);
         }
-        if (this.possessedPlayers.includes(tablePlayer.name)) {
-            this.emit(id, "possession", true);
+        if (this.possessedPlayers.includes(player.id)) {
+            this.emit(player.id, "possession", true);
         }
         // Update public state
         this.updateTable();
         // Update chats
-        this.generalChat.map(l => this.emit(id, "chat msg", l.msg, l.sender));
-        if (tablePlayer.isDemon) for (const name in this.demonChats) this.demonChats[name].map(l => this.emit(id, "demon msg", l.msg, name));
-        if (this.possessedPlayers.includes(tablePlayer.name)) this.demonChats[tablePlayer.name].map(l => this.emit(id, "demon msg", l.msg));
+        this.generalChat.map(l => this.emit(player.id, "chat msg", l.msg, l.sender));
+        if (player.isDemon) for (const id in this.demonChats) this.demonChats[id].map(l => this.emit(player.id, "demon msg", l.msg, id));
+        if (this.possessedPlayers.includes(player.id)) this.demonChats[player.id].map(l => this.emit(player.id, "demon msg", l.msg));
+    }
 
+    /**
+     * Removes a player the table. 
+     * If a game is in progress, marks the player as inactive, otherwise removes player completely.
+     * 
+     * @param {socket}   Associated socket.
+     * @param {uuid}     Player id  
+     * @return {Boolean} True if player was removed from room, false otherwise.
+     */
+    removePlayer(socket, id) {
+        let player = this.getPlayer(id);
+        if (!player) return true;
+        if (this.state === constants.states.LOBBY) return this.leaveTable(id);
+        if (player.active) this.markPlayerInactive(player);
+        return false;
+    }
+
+    leaveTable(id) {
+        if (this.state !== constants.states.LOBBY) {
+            this.emit(id, "server error", "Can not leave table while a game is in progress!");
+            return false;
+        }
+        this.emit(id, "clear state");
+        this.removeSocket(id);
+        utils.removeByValue(this.players, this.players.find(p => p.id === id));
+        this.updateTable();
         return true;
     }
 
-    markPlayerInactive(id) {
-        const tablePlayer = this.getPlayer(id);
-        if (!tablePlayer) return;
-        tablePlayer.active = false;
-        this.sockets[id].leave(this.code);
-        delete this.sockets[id];
+    markPlayerInactive(player) {
+        player.active = false;
+        this.removeSocket(player.id);
         this.updateTable();
+    }
+
+    addSocket(socket, id) {
+        this.sockets[id] = socket;
+        this.socketToId[socket.id] = id;
+        socket.join(this.code);
+        Object.entries(this.eventHandlers).forEach(([event, callback]) => {
+            socket.on(event, function(...args) { 
+                const id = this.socketToId[socket.id];
+                if (id) callback.bind(this)(id, ...args);
+            }.bind(this));
+        });
+        this.emit(id, "player id", id);
+        this.emit(id, "init settings", { code_version: process.env.npm_package_version });
+    }
+
+    removeSocket(id) {
+        const socket = this.sockets[id];
+        delete this.sockets[id];
+        if (!socket) return;
+        delete this.socketToId[socket.id];
+        socket.leave(this.code);
+        socket.emit("update state");
+        Object.keys(this.eventHandlers).forEach(event => socket.removeAllListeners(event));
     }
 
     empty() {
@@ -208,8 +285,8 @@ class Room {
         });
     }
 
-    emit(id, ...args) {
-        if (id in this.sockets) this.sockets[id].emit(...args)
+    emit(id, event, ...args) {
+        if (id in this.sockets) this.sockets[id].emit(event, ...args)
     }
 
     broadcast(...args) {
@@ -557,9 +634,9 @@ class Room {
                     this.autoAdvanceState(this.settings.times[constants.times.SECOND], true);
                 } else if (this.settings.turnOrder) {
                     this.state = constants.states.DISPLAY;
-                    this.message = `${currentPlayer.name} ${this.currentMove ? "passes": "ran out of time"}`; 
-                    this.broadcastMessage(`<c>${currentPlayer.name}</c> ${this.currentMove ? "passes": "ran out of time"}`);
                     let currentPlayer = this.getCurrentPlayer();
+                    this.message = `${currentPlayer.name} ${currentPlayer.move ? "passes": "ran out of time"}`; 
+                    this.broadcastMessage(`<c>${currentPlayer.name}</c> ${currentPlayer.move ? "passes": "ran out of time"}`);
                     currentPlayer.move = {type: constants.moves.PASS};
                     this.autoAdvanceState(PASS_DISPLAY_SEC);
                 } else {
@@ -817,7 +894,7 @@ class Room {
             this.message = DEMON_WIN_MESSAGE;
             let winners = [];
             for (var tablePlayer of this.players) {
-                if (tablePlayer.isDemon || this.possessedPlayers.includes(tablePlayer.name)) {
+                if (tablePlayer.isDemon || this.possessedPlayers.includes(tablePlayer.id)) {
                     tablePlayer.isDamned = true;
                     winners.push(tablePlayer.name);
                 }
