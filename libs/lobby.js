@@ -20,11 +20,6 @@ class Lobby {
     
     listen() {
         this.io.on("connection", function(socket) {
-            if (!socket.request.headers.cookie) {
-                socket.emit("server error", "No cookie!");
-                return false;
-            }
-    
             this.addPlayer(socket);
     
             socket.on("disconnect", function() {
@@ -56,7 +51,7 @@ class Lobby {
     }
 
     addPlayer(socket) {
-        const sessionId = DEBUG ? `${socket.id} session` : cookie.parse(socket.request.headers.cookie)["connect.sid"];
+        const sessionId = DEBUG ? `${socket.id} session` : socket.handshake.session.id;
         if (DEBUG) socket.emit("init settings", { DEBUG: DEBUG });
 
         let id = this.sessionToId[sessionId];

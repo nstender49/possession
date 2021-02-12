@@ -1,29 +1,41 @@
+require("dotenv").config();
+
 var ENV = process.env.NODE_ENV || "dev";
-var DEBUG = ENV === "dev";
+var DEBUG = process.env.NODE_ENV === "dev";
 
 var express = require("express");
-var session = require("express-session");
 var socketio = require("socket.io");
 var timesyncServer = require("timesync/server");
 
 const Lobby = require("./libs/lobby");
 
 var app = express();
-app.use(session({
-	secret: "cookie secret",
+var session = require("express-session")({
+	secret: process.env.COOKIE_SECRET,
 	cookie: {
 		sameSite: true,
-		// secure: true,  NOTE: enable this once https is enabled, need hobby level heroku
+		// TODO: take a second look at these.
+		saveUninitialized: false,
+		resave: true, 
+		// TODO: enable this once https is enabled, need hobby level heroku
+		// secure: DEBUG ? false : true,  
 		maxAge: 24 * 60 * 60 * 1000,
 	},
-}));
+});
+var sharedsession = require("express-socket.io-session");
+
+app.use(session);
 
 var server = require("http").Server(app);
 var io = socketio(server);
+io.use(sharedsession(session, {
+    autoSave:true
+})); 
+
 var lobby = new Lobby(io);
 lobby.listen();
 
-app.set("port", (process.env.PORT || 3001));  // Use either given port or 3001 as default
+app.set("port", process.env.PORT);
 app.use(express.static("public"));  // Staticly serve pages, using directory 'public' as root 
 app.use("/timesync", timesyncServer.requestHandler);
 
@@ -31,7 +43,6 @@ app.use("/timesync", timesyncServer.requestHandler);
 app.get("/", function(req, res) {
 	// Will serve static pages, no need to handle requests
 });
-
 
 // If any page not handled already handled (ie. doesn't exists)
 app.get("*", function(req, res) {
