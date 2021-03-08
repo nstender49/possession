@@ -310,14 +310,22 @@ function drawPlayerPad(player, x, y, rad) {
 function drawTimers() {
 	if (!theTable) return;
 	// Update timers
+	var anyTimer = false;
 	for (var timer in theTable.timers) {
-		if (theTable.timers[timer] && theTable.timers[timer] >= ts.now()) {
-			labels[timer].text = utils.formatSec(Math.floor((theTable.timers[timer] - ts.now()) / 1000));
-			drawGroups[timer].enable();
+		if (theTable.timers[timer]) {
+			if (theTable.paused) {
+				labels[timer].text = utils.formatSec(Math.floor((theTable.timers[timer] - theTable.pauseTime) / 1000));
+				drawGroups[timer].enable();
+			} else if (theTable.timers[timer] >= ts.now()) {
+				labels[timer].text = utils.formatSec(Math.floor((theTable.timers[timer] - ts.now()) / 1000));
+				drawGroups[timer].enable();
+			}
+			anyTimer = true;
 		} else {
 			drawGroups[timer].disable();
 		}
 	}
+	if (anyTimer && isTableOwner()) buttons["pause"].enable().draw();
     // If turn order is on, round timer is always off, but we still want round number.
     if (theTable.settings.turnOrder && theTable.round) labels["round timer title"].enable();
 	drawGroups["timers"].draw();

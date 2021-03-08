@@ -1,5 +1,5 @@
-var ENV = process.env.NODE_ENV || "dev";
-var DEBUG = ENV === "dev";
+var ENV = process.env.NODE_ENV || "development";
+var DEBUG = ENV === "development";
 
 var constants = require("../public/shared/constants");
 var utils = require("../public/shared/utils");
@@ -37,11 +37,14 @@ const ITEM_USE_MSG = {
 };
 
 class Room {
-    constructor(io, code, settings) {
+    constructor(io, code, settings, storeCallback, deleteCallback) {
         this.io = io;
         this.code = code;
         this.sockets = {};
         this.socketToId = {};
+
+        this.storeCallback = storeCallback;
+        this.deleteCallback = deleteCallback;
 
         this.eventHandlers = {
             "leave table": this.leaveTable,
@@ -54,6 +57,7 @@ class Room {
         // Public data
         this.state = constants.states.LOBBY;
         this.round = 0;
+        this.paused = false;
         
         this.players = [];
         this.message = undefined;
@@ -69,7 +73,9 @@ class Room {
         this.currentPlayer = undefined;
         this.startPlayer = undefined;
 
-        this._updateSettings(settings);
+        // May not provide settings if restoring.
+        if (settings) this._updateSettings(settings);
+        this.showCode = true;
 
         // Private data
         this.possessedPlayers = [];
@@ -89,7 +95,7 @@ class Room {
         this.rodResult = undefined;
         this.rodDisplay = undefined;
         
-        this.timerIds = {};
+        this.timerInfo = {};
         this.roundTimedOut = undefined;
 
         // Chat
@@ -97,15 +103,63 @@ class Room {
         this.demonChats = {};
     }
 
-    static makeCode() {
-        //const charset = DEBUG ? String.fromCharCode('A'.charCodeAt() + Object.keys(this.rooms).length) : "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
-        const charset = DEBUG ? "A" : "ABCDEFGHIJKLMNOPQRSTUCWXYZ";
-        const codeLen = 4;
-        let code = "";
-        for (var i = 0; i < codeLen; i++) {
-            code += charset.charAt(Math.floor(Math.random() * charset.length));
+    restore(state) {
+        Object.assign(this, state);
+    
+        // Pause game until manually unpaused.
+        this.paused = true;
+        this.pauseTime = this.pauseTime || this.saveTime;
+
+        // Mark players at inactive when restored, players will be activated as restored.
+        this.players.forEach(p => p.active = false);
+    }
+
+    toJSON() {
+        return {
+            // Settings
+            settings: this.settings,
+            itemsInUse: this.itemsInUse,
+            code: this.code,
+            showCode: this.showCode,
+            // Game data
+            state: this.state,
+            round: this.round,
+            players: this.players,
+            demonId: this.demonId,
+            // Display data
+            message: this.message,
+            demonMessage: this.demonMessage,
+            timers: this.timers,
+            paused: this.paused,
+            pauseTime: this.pauseTime,
+            // Moves
+            resources: this.resources,
+            saltLine: this.saltLine,
+            currentMove: this.currentMove,
+            // Turn order
+            currentPlayer: this.currentPlayer,
+            startPlayer: this.startPlayer,
+            // Private data
+            possessedPlayers: this.possessedPlayers,
+            damnedPlayers: this.damnedPlayers,
+            votes: this.votes,
+            smudgedPlayer: this.smudgedPlayer,
+            interfereUses: this.interfereUses,
+            doInterfere: this.doInterfere,
+            saltFlip: this.saltFlip,
+            rodResult: this.rodResult,
+            rodDisplay: this.rodDisplay,
+            // Internal data
+            demonCandidates: this.demonCandidates,
+            demonCandidate: this.demonCandidate,
+            roundTimedOut: this.roundTimedOut,
+            // Chat
+            generalChat: this.generalChat,
+            demonChats: this.demonChats,
+            // Restore data
+            timerInfo: this.timerInfo,
+            saveTime: Date.now(),
         }
-        return code;
     }
 
     static validatePlayer(socket, settings) {
@@ -142,11 +196,23 @@ class Room {
             // Need to replace any inflight id references here.
             if (this.currentMove && this.currentMove.playerId === existing.id) this.currentMove.playerId = id;
             if (this.demonCandidate === existing.id) this.demonCandidate = id;
+            if (this.possessedPlayers.includes(existing.id)) {
+                utils.removeByValue(this.possessedPlayers, existing.id);
+                this.possessedPlayers.push(id);
+                this.emit(this.demonId, "possessed players", this.possessedPlayers);
+                this.demonChats[id] = this.demonChats[existing.id];
+                delete this.demonChats[existing.id];
+            }
+            existing.id = id;
             this.markPlayerActive(socket, existing);
             return true;
         }
 
         // Otherwise, this is a truly new player.
+        if (!settings) {
+            socket.emit("server error", `Tried rejoining table ${this.code} but no player settings provided!`);
+            return false;
+        }
         if (this.players.length >= this.settings.maxPlayers) {
             socket.emit("server error", `Table ${this.code} full!`);
             return false;
@@ -218,6 +284,7 @@ class Room {
         this.removeSocket(id);
         utils.removeByValue(this.players, this.players.find(p => p.id === id));
         this.updateTable();
+        if (this.empty()) this.deleteCallback();
         return true;
     }
 
@@ -259,13 +326,14 @@ class Room {
         return this.players.reduce((acc, p) => acc || p.active, false);
     }
 
-    updateTable() {
+    async updateTable() {
         // Send public data to the players.
         this.broadcast("update state", {
             // Settings
             settings: this.settings,
             itemsInUse: this.itemsInUse,
             code: this.code,
+            showCode: this.showCode,
             // Game data
             state: this.state,
             round: this.round,
@@ -275,6 +343,8 @@ class Room {
             message: this.message,
             demonMessage: this.demonMessage,
             timers: this.timers,
+            paused: this.paused,
+            pauseTime: this.pauseTime,
             // Moves
             resources: this.resources,
             saltLine: this.saltLine,
@@ -283,6 +353,7 @@ class Room {
             currentPlayer: this.currentPlayer,
             startPlayer: this.startPlayer,
         });
+        if (this.storeCallback) await this.storeCallback(this.toJSON());
     }
 
     emit(id, event, ...args) {
@@ -320,7 +391,7 @@ class Room {
         this.broadcast("clear chat", "game-log");
         this.broadcast("clear chat", "demon-chat");
         this.generalChat = [];
-        this.demonChats = [];
+        this.demonChats = {};
     }
 
     updatePlayer(id, settings) {
@@ -345,6 +416,10 @@ class Room {
     }
 
     handleMove(id, move) {
+        if (this.isOwner(id) && this.handleOwnerMove(move)) {
+            this.updateTable();
+            return;
+        }
         let result = this.isDemon(id) ? this.handleDemonMove(move) : this.handlePlayerMove(id, move);
         if (result.advance) {
             this.advanceState();
@@ -352,6 +427,31 @@ class Room {
             this.updateTable();
         } else {
             console.error(`Move not handled! State: ${this.state}, move: ${move}`);
+        }
+    }
+
+    handleOwnerMove(move) {
+
+        switch (move.type) {
+            case constants.moves.PAUSE:
+                if (this.paused) {
+                    // Restart timers
+                    if (this.timerInfo[constants.timers.ROUND]) this.autoAdvanceRound(this.timerInfo[constants.timers.ROUND].duration - (this.pauseTime - this.timerInfo[constants.timers.ROUND].start) / 1000);
+                    if (this.timerInfo[constants.timers.MOVE]) this.autoAdvanceState(this.timerInfo[constants.timers.MOVE].duration - (this.pauseTime - this.timerInfo[constants.timers.MOVE].start) / 1000, this.timerInfo[constants.timers.MOVE].display);
+                } else {
+                    // Clear timeouts
+                    for (var timer in constants.timers) if (this.timerInfo[timer]) clearTimeout(this.timerInfo[timer].id);
+                    //if (this.timerInfo[constants.timers.ROUND]) clearTimeout(this.timerInfo[constants.timers.ROUND].id);
+                    //if (this.timerInfo[constants.timers.MOVE]) clearTimeout(this.timerInfo[constants.timers.MOVE].id);
+                }
+                this.paused = !this.paused;
+                this.pauseTime = this.paused ? Date.now() : undefined;
+                return true;
+            case constants.moves.SHOW_CODE:
+                this.showCode = !this.showCode;
+                return true;
+            default:
+                return false;
         }
     }
 
@@ -752,7 +852,6 @@ class Room {
                         this.rodDisplay = undefined;
                         this.message = `${this.currentMove.playerName} is interpreting the results of the divining rod`;
                         this.emit(this.currentMove.playerId, "rod", is);
-                        this.timers[constants.timers.MOVE] = getTimerValue(this.settings.times[constants.times.INTERPRET]);
                         break;
                     }
                     case constants.items.EXORCISM: {
@@ -806,9 +905,13 @@ class Room {
                     }
                 }
                 var wait = SHOW_RESULT_DISPLAY_SEC;
-                if (this.state === constants.states.INTERPRET) wait = this.settings.times[constants.times.INTERPRET];
+                var display = false;
+                if (this.state === constants.states.INTERPRET) {
+                    wait = this.settings.times[constants.times.INTERPRET];
+                    display = true;
+                }
                 if (this.currentMove.type === constants.items.SALT) wait *= 2;
-                this.autoAdvanceState(wait);
+                this.autoAdvanceState(wait, display);
                 break;
             }
             case constants.states.INTERPRET: {
@@ -1071,19 +1174,20 @@ class Room {
     }
 
     clearTimer(timer) {
-        if (this.timerIds[timer]) clearTimeout(this.timerIds[timer]);
-        this.timerIds[timer] = undefined;
+        if (this.timerInfo[timer]) clearTimeout(this.timerInfo[timer].id);
+        this.timerInfo[timer] = undefined;
         this.timers[timer] = false;
     }
 
     autoAdvanceState(delay, display=false) {
-        this.timerIds[constants.timers.MOVE] = Number(setTimeout(this.advanceState.bind(this), 1000 * delay))
+        this.timerInfo[constants.timers.MOVE] = setTimer(this.advanceState.bind(this), delay, display);
         if (display) this.timers[constants.timers.MOVE] = getTimerValue(delay);
     }
     
-    autoAdvanceRound() {
-        this.timerIds[constants.timers.ROUND] = Number(setTimeout(this.timeoutRound.bind(this), 1000 * this.settings.times[constants.times.ROUND]));
-        this.timers[constants.timers.ROUND] = getTimerValue(this.settings.times[constants.times.ROUND]);
+    autoAdvanceRound(delay) {
+        if (!delay) delay = this.settings.times[constants.times.ROUND];
+        this.timerInfo[constants.timers.ROUND] = setTimer(this.timeoutRound.bind(this), delay, true);
+        this.timers[constants.timers.ROUND] = getTimerValue(delay);
     }
     
     timeoutRound() {
@@ -1134,6 +1238,15 @@ class Room {
         const tableColors = this.players.map(p => p.color);
         if (perference && !tableColors.includes(perference)) return perference;
         return constants.PLAYER_COLORS.find(c => !tableColors.includes(c));
+    }
+}
+
+function setTimer(callback, sec, display) {
+    return {
+        id: Number(setTimeout(callback, sec * 1000)),
+        start: Date.now(),
+        duration: sec,
+        display: display,
     }
 }
 

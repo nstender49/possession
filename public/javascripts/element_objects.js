@@ -28,6 +28,8 @@ class Element {
 		this.opacity = 100;
 
 		this.enabled = false;
+		this.pausable = true;
+		
 		this.down = false;
 		this.focus = false;
 		this.clicked = false;
@@ -55,6 +57,11 @@ class Element {
 
 	setCenter(val) {
 		if (val !== undefined) this.center = val;
+		return this;
+	}
+
+	setPausable(val) {
+		if (val !== undefined) this.pausable = val;
 		return this;
 	}
 
@@ -306,7 +313,11 @@ let ButtonMixin = (superclass) => class extends superclass {
 	}
 
 	isEnabled() {
-		return this.enabled && (!overlay || this.isOverlay);
+		return (
+			this.enabled
+			&& !(theTable && theTable.paused && this.pausable && !this.isOverlay)
+			&& (!overlay || this.isOverlay)
+		);
 	}
 
 	bgndColor() {
@@ -394,6 +405,7 @@ class DragableDivider extends ButtonMixin(TextElement) {
 		this.yMin = 0;
 		this.yMax = 1;
 		this.fixed = false;
+		this.pausable = false;
 	}
 
 	setFixed(val) {

@@ -338,7 +338,7 @@ function initLabels() {
 	]);
 
 	// Chat
-	buttons["submit chat"] = new Button("↵", 15, submitChat).setDims(undefined, 0.05).setCenter(true);
+	buttons["submit chat"] = new Button("↵", 15, submitChat).setDims(undefined, 0.05).setCenter(true).setPausable(false);
 	buttons["game-log"] = new DragableDivider("Game Log", 10, setChatHeight);
 	buttons["demon-chat"] = new DragableDivider("Demon Chat", 10, setChatHeight);
 	buttons["player-chat"] = new DragableDivider("Player Chat", 10, setChatHeight);
@@ -383,17 +383,18 @@ function initLabels() {
 	drawGroups["fast chat"] = new DrawGroup();
 	var dx = 0.375;
 	for (var t of ["Use", "Vote Y", "Vote N", "Sus", "No Sus", "Agree w/", "STFU"]) {
-		buttons[`fast ${t}`] = new Button(t, 10, fastChat.bind(null, t)).setDims(0.045, 0.04).setPosition(dx, 0.875);
+		buttons[`fast ${t}`] = new Button(t, 10, fastChat.bind(null, t)).setDims(0.045, 0.04).setPosition(dx, 0.875).setPausable(false);
 		drawGroups["fast chat"].add(buttons[`fast ${t}`]);
 		dx += 0.048;
 	}
 	Object.values(constants.items).map(item => {
-		buttons[`fast chat ${item}`] = new ImageButton(IMAGES[item], fastChat.bind(null, item)).setDims(0.04).setBackground(BUTTON_BACKGROUND).setMargin(5);
+		buttons[`fast chat ${item}`] = new ImageButton(IMAGES[item], fastChat.bind(null, item)).setDims(0.04).setBackground(BUTTON_BACKGROUND).setMargin(5).setPausable(false);
 	});
 
 	// Game settings (bottom bar)
-	buttons["table code"] = new Button("Table ????", 12, toggleShowTable).setPosition(0.05, 0.97).setDims(0.09, 0.04).setCenter(true);
-	buttons["howto"] = new Button("How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO)).setPosition(0.15, 0.97).setDims(0.09, 0.04).setCenter(true);
+	buttons["table code"] = new Button("Table ????", 12, toggleShowTable).setPosition(0.05, 0.97).setDims(0.09, 0.04).setCenter(true).setPausable(false);
+	buttons["howto"] = new Button("How To Play", 12, enableOverlay.bind(null, OVERLAY_HOWTO)).setPosition(0.15, 0.97).setDims(0.09, 0.04).setCenter(true).setPausable(false);
+	buttons["pause"] = new Button("Pause Game", 12, pauseGame).setPosition(0.85, 0.97).setDims(0.09, 0.04).setCenter(true).setPausable(false);
 	labels["version"] = new Label("", 15).setPosition(0.99, 0.98).setAlign("right").setFont("monospace");
 	drawGroups["bottom bar"] = new DrawGroup([
 		buttons["table code"],
@@ -813,6 +814,14 @@ function doInterfere(vote) {
 	socket.emit("do move", {type: constants.moves.INTERFERE, vote: vote});
 }
 
+function pauseGame() {
+	socket.emit("do move", {type: constants.moves.PAUSE});
+}
+
+function toggleShowTable() {
+	socket.emit("do move", {type: constants.moves.SHOW_CODE});
+}
+
 function saltInterfere(group, doInterfere) {
 	// First group in table order by be different from first "salt" group depending on where line starts
 	var trueGroup = ((theTable.saltLine.start < theTable.saltLine.end ? 1 : 0) + group) % 2;
@@ -890,16 +899,6 @@ function changeColor(color) {
 	socket.emit("update player settings", {color: color});
 }
 
-function toggleShowTable() {
-	if (buttons["table code"].hideCode) {
-		buttons["table code"].hideCode = false;
-		buttons["table code"].text = theTable ? `Table ${theTable.code}` : "Table ????";
-	} else {
-		buttons["table code"].hideCode = true;
-		buttons["table code"].text = "Table ????";
-	}
-}
-
 function submitChat() {
 	const input = elems["chat-input"].elem;
 	if (input.value) {
@@ -974,6 +973,7 @@ function updateTable(table) {
 		if (fastButton.textDims().width > fastButton.buttonDims().width * 0.75) {
 			fastButton.text = player.name.substring(0, Math.floor(player.name.length * fastButton.buttonDims().width * 0.75 / fastButton.textDims().width));
 		}
+		fastButton.setPausable(false);
 		buttons[`fast chat ${player.id}`] = fastButton;
 	});
 	const removedPlayerIds = thePlayerIds.filter(id => !latestPlayerIds.includes(id));
@@ -987,13 +987,14 @@ function updateTable(table) {
 	// Update state.
 	var change = !theTable || gameState != table.state;
 	theTable = table;
+	buttons["pause"].text = theTable.paused ? "Resume Game": "Pause Game";
+	buttons["table code"].text = theTable.showCode ? `Table ${theTable.code}` : "Table ????";
 	labels["round timer title"].text = `Round ${table.round}`;
 	if (change) {
 		changeState(table.state);
 		setChatHeight();
 		enableInputs();
 	}
-	if (!buttons["table code"].hideCode) buttons["table code"].text = `Table ${theTable.code}`;
 }
 
 function leaveTable() {

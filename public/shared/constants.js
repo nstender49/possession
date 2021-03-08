@@ -31,6 +31,8 @@
         INTERFERE: "INTERFERE",
         INTERPRET: "INTERPRET",
         FINISH: "FINISH",
+        PAUSE: "PAUSE",
+        SHOW_CODE: "SHOW_CODE",
     };
 
     exports.items = {

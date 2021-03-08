@@ -187,6 +187,11 @@ function tick() {
 	// Check for holding buttons.
 	for (var button of getButtons()) button.checkHold(cursorX, cursorY);
 
+	if (isTableOwner()) {
+		buttons["table code"].enable();
+	} else {
+		buttons["table code"].disable().show();
+	}
 	switch(gameState) {
 		case constants.states.INIT:
 			drawGroups["main menu"].draw();

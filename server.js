@@ -1,42 +1,51 @@
 require("dotenv").config();
 
-var ENV = process.env.NODE_ENV || "dev";
-var DEBUG = process.env.NODE_ENV === "dev";
+var DEBUG = process.env.NODE_ENV === "development";
 
 var express = require("express");
-var socketio = require("socket.io");
-var timesyncServer = require("timesync/server");
-
-const Lobby = require("./libs/lobby");
-
 var app = express();
-var session = require("express-session")({
+
+const db = require("./db");
+
+const session = require("express-session");
+const KnexSessionStore = require('connect-session-knex')(session);
+
+const store = new KnexSessionStore({
+	knex: db
+});
+
+var expressSession = session({
 	secret: process.env.COOKIE_SECRET,
 	cookie: {
 		sameSite: true,
-		// TODO: take a second look at these.
-		saveUninitialized: false,
-		resave: true, 
 		// TODO: enable this once https is enabled, need hobby level heroku
 		// secure: DEBUG ? false : true,  
 		maxAge: 24 * 60 * 60 * 1000,
 	},
+	// TODO: take a second look at these.
+	saveUninitialized: true,
+	resave: true, 
+	store: store,
 });
-var sharedsession = require("express-socket.io-session");
-
-app.use(session);
+app.use(expressSession);
 
 var server = require("http").Server(app);
+
+var socketio = require("socket.io");
 var io = socketio(server);
-io.use(sharedsession(session, {
+const SharedSession = require("express-socket.io-session");
+io.use(SharedSession(expressSession, {
     autoSave:true
 })); 
 
-var lobby = new Lobby(io);
-lobby.listen();
+const Lobby = require("./libs/lobby");
+var lobby = new Lobby(io, db);
+lobby.restore().then(lobby.listen());
 
 app.set("port", process.env.PORT);
 app.use(express.static("public"));  // Staticly serve pages, using directory 'public' as root 
+
+var timesyncServer = require("timesync/server");
 app.use("/timesync", timesyncServer.requestHandler);
 
 // User connects to server
