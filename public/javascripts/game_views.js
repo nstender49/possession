@@ -164,35 +164,39 @@ function drawDemonSalt(xStart, yTop, yBot, padRad, margin) {
 	// Track salt line groupings, so we can display what the result will be to demon.
 	var groupRed = [false, false];
 	var saltBreaks = [0];
-	var startGroup = theTable.saltLine.start < theTable.saltLine.end ? 1 : 0;
-	var currGroup = startGroup;
 
-	var saltIndex = 0;
-	for (var i = 0; i < numPlayersAtTable(); i++) {
-		if (theTable.players[i].isDemon) continue;
-
+	var pastDemon = false;
+	for (var i = 0; i < theTable.players.length; i++) {
+		if (theTable.players[i].isDemon) {
+			pastDemon = true;
+			continue;
+		}
+		var tableIndex = i - (pastDemon ? 1 : 0);
+		var currGroup = (tableIndex <= theTable.saltLine.start || tableIndex > theTable.saltLine.end) ? 0 : 1;
+		
 		groupRed[currGroup] |= possessedPlayers.includes(theTable.players[i].id);
-		if (saltIndex === theTable.saltLine.start || saltIndex === theTable.saltLine.end) {
-			currGroup = 1 - currGroup;
-			saltBreaks.push(saltIndex + 1);
+
+		if (tableIndex === theTable.saltLine.start || tableIndex === theTable.saltLine.end) {
+			saltBreaks.push(tableIndex + 1);
 			ctx.strokeStyle = WHITE;
 			ctx.lineWidth = 2.5 * r;
 			ctx.beginPath();
-			var x = xStart + padRad * 2 * (saltIndex + 1) + margin * (saltIndex + 1.5);
+			var x = xStart + padRad * 2 * (tableIndex + 1) + margin * (tableIndex + 1.5);
 			ctx.moveTo(x, yTop);
 			ctx.lineTo(x, yBot);
 			ctx.stroke();
 		}
-		saltIndex++;
 	}
 	saltBreaks.push(numPlayersAtTable());
-	// Draw block
+
+	// Draw blocks
 	if (theTable.saltLine.start !== undefined && theTable.saltLine.end != undefined) {
 		var yTop = (yTop + yBot) / 2 - padRad - margin * 0.1;
 		for (var i = 0; i < saltBreaks.length - 1; i++) {
+			if (saltBreaks[i] === saltBreaks[i + 1]) continue;
 			var blockX = xStart + padRad * 2 * saltBreaks[i] + margin * (saltBreaks[i] + 1 - 0.1);
 			var blockLen = padRad * 2 * (saltBreaks[i + 1] - saltBreaks[i]) + margin * (saltBreaks[i + 1] - saltBreaks[i] - 1 + 0.2);
-			var isRed = saltFlip[(startGroup + i) % 2] ? !groupRed[(startGroup + i) % 2] : groupRed[(startGroup + i) % 2];
+			var isRed = saltFlip[i % 2] ? !groupRed[i % 2] : groupRed[i % 2];
 			drawRect(isRed ? BUTTON_BACKGROUND : BUTTON_TEXT, blockX, yTop, blockLen, padRad * 2 + margin * 0.2, true);
 		}
 	}
@@ -222,8 +226,9 @@ function drawSaltLine(tempEnd) {
 	ctx.lineTo(tableX - Math.sin(Math.PI * endAngle / 180) * tableRad, tableY + Math.cos(Math.PI * endAngle / 180) * tableRad);
 	ctx.stroke();
 
+	// NOTE: group 0 always includes player 0, and is the group outside of the start and end lines.
 	if (gameState === constants.states.DISPLAY) {
-		ctx.fillStyle = theTable.saltLine.result[0] ? BUTTON_BACKGROUND : BUTTON_TEXT;
+		ctx.fillStyle = theTable.saltLine.result[1] ? BUTTON_BACKGROUND : BUTTON_TEXT;
 		var centerAngle = (startAngle + endAngle) / 2 + (startAngle > endAngle ? 180 : 0);
 		ctx.beginPath();
 		ctx.moveTo(tableX - Math.sin(Math.PI * centerAngle / 180) * tableRad * 0.1, tableY + Math.cos(Math.PI * centerAngle / 180) * tableRad * 0.1);
@@ -232,7 +237,7 @@ function drawSaltLine(tempEnd) {
 		ctx.arc(tableX, tableY, tableRad * 0.9, Math.PI * (startAngle + 5 + 90) / 180, Math.PI * (endAngle - 5 + 90) / 180);
 		ctx.fill();
 
-		ctx.fillStyle = theTable.saltLine.result[1] ? BUTTON_BACKGROUND : BUTTON_TEXT;
+		ctx.fillStyle = theTable.saltLine.result[0] ? BUTTON_BACKGROUND : BUTTON_TEXT;
 		ctx.beginPath();
 		ctx.moveTo(tableX - Math.sin(Math.PI * (centerAngle + 180) / 180) * tableRad * 0.1, tableY + Math.cos(Math.PI * (centerAngle + 180) / 180) * tableRad * 0.1);
 		ctx.lineTo(tableX - Math.sin(Math.PI * (endAngle + 5) / 180) * tableRad * 0.9, tableY + Math.cos(Math.PI * (endAngle + 5) / 180) * tableRad * 0.9);

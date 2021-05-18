@@ -193,6 +193,10 @@ socket.on("rod", function(isPossessed) {
 	rodResult = isPossessed;
 });
 
+socket.on("salt flip", function(flipState) {
+	saltFlip = flipState;
+});
+
 socket.on("possessed players", function(players) {
 	Object.keys(demonChats).forEach(id => {
 		if (!players.includes(id)) {
@@ -464,9 +468,9 @@ function disableInputs() {
 	Object.values(demonChats).forEach(c => c.hide());
 }
 
-function setElemDisplay(inputs = []) {
+function setElemDisplay(toShow = []) {
 	for (var name in elems) {
-		inputs.includes(name) ? elems[name].show() : elems[name].hide();
+		toShow.includes(name) ? elems[name].show() : elems[name].hide();
 	}
 }
 
@@ -482,14 +486,13 @@ function enableInputs() {
 		}
 		default: {
 			let inputs = ["chat-input", "game-log", "player-chat"];
+			drawGroups["chat"].enable();
 			if (thePlayerIsPossessed) {
-				buttons["demon-chat"].enable();
 				inputs.push("demon-chat");
 			} else {
 				buttons["demon-chat"].disable();
 			}
 			setElemDisplay(inputs);
-			drawGroups["chat"].enable();
 			if (thePlayer.isDemon) Object.values(demonChats).forEach(c => c.show());
 			break;
 		}
@@ -823,11 +826,8 @@ function toggleShowTable() {
 }
 
 function saltInterfere(group, doInterfere) {
-	// First group in table order by be different from first "salt" group depending on where line starts
-	var trueGroup = ((theTable.saltLine.start < theTable.saltLine.end ? 1 : 0) + group) % 2;
-	saltFlip[trueGroup] = doInterfere;
 	buttons[`salt interfere ${group} ${doInterfere ? "no" : "yes"}`].clicked = false;
-	socket.emit("do move", {type: constants.moves.INTERFERE, saltFlip: saltFlip});
+	socket.emit("do move", {type: constants.moves.INTERFERE, flipGroup: group, vote: doInterfere});
 }
 
 function doSalt() {
@@ -850,7 +850,12 @@ function updateSalt(pos) {
 		buttons["submit salt"].disable().show();
 		buttons["clear salt"].disable().show();
 	} else if (theTable.saltLine.start !== undefined) {
-		theTable.saltLine.end = pos;
+		if (pos < theTable.saltLine.start) {
+			theTable.saltLine.end = theTable.saltLine.start;
+			theTable.saltLine.start = pos;
+		} else {
+			theTable.saltLine.end = pos;
+		}
 		for (var i = 0; i < theTable.players.length - 1; i++) {
 			buttons[`salt ${i}`].disable();
 		}

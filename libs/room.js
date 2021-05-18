@@ -87,7 +87,7 @@ class Room {
         this.interfereUses = {};
         this.doInterfere = false;
         this.anyInterfere = false;
-        this.saltFlip = undefined;
+        this.saltFlip = [false, false];
 
         this.demonCandidates = [];
         this.demonCandidate = undefined;
@@ -494,9 +494,14 @@ class Room {
             }
             case constants.states.INTERFERE: {
                 if (move.type !== constants.moves.INTERFERE) return result;
-                if (!this.interfereUses[this.currentMove.type]) return;
-                this.doInterfere = move.saltFlip ? (move.saltFlip[0] || move.saltFlip[1]) : move.vote;
-                this.saltFlip = move.saltFlip;
+                if (!this.interfereUses[this.currentMove.type]) return; 
+                if (move.flipGroup !== undefined) {
+                    this.saltFlip[move.flipGroup] = move.vote;
+                    this.doInterfere = this.saltFlip[0] || this.saltFlip[1];
+                    this.emit(this.demonId, "salt flip", this.saltFlip);
+                } else {
+                    this.doInterfere = move.vote;
+                }
                 result.handled = true;
                 // We do not advance round, this is handled by timer
                 break;
@@ -805,10 +810,14 @@ class Room {
                             let targetTablePlayer = this.getPlayer(this.currentMove.targetId);
                             targetTablePlayer.isPurified = this.settings.waterPurify;
                             break;
+                        case constants.items.SALT:
+                            this.saltFlip = [false, false];
+                            this.emit(this.demonId, "salt flip", this.saltFlip);
+                            this.state = constants.states.INTERFERE;
+                            break;
                         case constants.items.BOARD:
                         case constants.items.ROD:
                         case constants.items.EXORCISM:
-                        case constants.items.SALT:
                         case constants.items.SMUDGE:
                             this.state = constants.states.INTERFERE;
                             break;
@@ -871,19 +880,18 @@ class Room {
                         // Collect salt groups.
                         var groups = [[], []];
                         this.saltLine.result = [false, false];
-                        var currGroup = this.saltLine.start < this.saltLine.end ? 1 : 0;
                         var pastDemon = false;
+
                         for (var i = 0; i < this.players.length; i++) {
                             if (this.players[i].isDemon) {
                                 pastDemon = true;
                                 continue;
                             }
+                            var tableIndex = i - (pastDemon ? 1 : 0);
+                            var currGroup = (tableIndex <= this.saltLine.start || tableIndex > this.saltLine.end) ? 0 : 1;
+
                             groups[currGroup].push(this.players[i].name);
-                            this.saltLine.result[currGroup] |= this.possessedPlayers.includes(this.players[i].name)
-                            var saltIndex = (i - (pastDemon ? 1 : 0)).mod(this.players.length - 1);
-                            if (saltIndex === this.saltLine.start || saltIndex === this.saltLine.end) {
-                                currGroup = 1 - currGroup;
-                            }
+                            this.saltLine.result[currGroup] |= this.possessedPlayers.includes(this.players[i].id)
                         }
                         // If interference, flip results.
                         if (this.saltFlip[0]) this.saltLine.result[0] = !this.saltLine.result[0];
